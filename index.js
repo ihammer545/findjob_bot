@@ -1,5 +1,5 @@
-import express from 'express';
-import fetch from 'node-fetch';
+const express = require('express');
+const fetch = require('node-fetch');
 
 const app = express();
 app.use(express.json());
@@ -70,7 +70,7 @@ function similarity(a, b) {
   a = (a || '').toLowerCase().replace(/\s+/g, ' ').trim();
   b = (b || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (a === b) return 1;
-  const matrix = Array.from({ length: a.length + 1 }, (_, i) => Array(b.length + 1).fill(0));
+  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
   for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
   for (let i = 1; i <= a.length; i++) {

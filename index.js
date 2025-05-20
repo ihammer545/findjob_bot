@@ -1,5 +1,5 @@
-const express = require('express');
-const fetch = require('node-fetch');
+import express from 'express';
+import fetch from 'node-fetch';
 
 const app = express();
 app.use(express.json());
@@ -49,14 +49,16 @@ app.get('/', async (req, res) => {
           }
         }
       }
+    }
 
-      res.json({ duplicates: Array.from(toDelete) });
+    // ✅ Вынесен за пределы цикла!
+    res.json({ duplicates: Array.from(toDelete) });
+
   } catch (err) {
     res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
 
-// Утилиты
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -70,7 +72,7 @@ function similarity(a, b) {
   a = (a || '').toLowerCase().replace(/\s+/g, ' ').trim();
   b = (b || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (a === b) return 1;
-  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  const matrix = Array.from({ length: a.length + 1 }, (_, i) => Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
   for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
   for (let i = 1; i <= a.length; i++) {
@@ -89,5 +91,5 @@ function similarity(a, b) {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  console.log(`✅ Server running on http://localhost:${port}`);
 });

@@ -1,5 +1,5 @@
-
 {
+  "type": "module",
   "name": "duplicates-finder",
   "version": "1.0.0",
   "main": "index.js",

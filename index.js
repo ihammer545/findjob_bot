@@ -51,14 +51,13 @@ app.get('/', async (req, res) => {
       }
     }
 
-    // ✅ Вынесен за пределы цикла!
     res.json({ duplicates: Array.from(toDelete) });
-
   } catch (err) {
     res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
 
+// Утилиты
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -89,7 +88,8 @@ function similarity(a, b) {
   return 1 - distance / Math.max(a.length, b.length);
 }
 
+// 👇 Это важно для Render, чтобы он смог найти сервер!
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`✅ Server running on http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ Server running on http://0.0.0.0:${port}`);
 });

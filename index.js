@@ -49,15 +49,15 @@ app.get('/', async (req, res) => {
           }
         }
       }
-    }
 
-    res.json({ duplicates: Array.from(toDelete) });
+      return res.json({ duplicates: Array.from(toDelete) });
+
   } catch (err) {
     res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
 
-// Утилиты
+// ===== Утилиты =====
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -71,7 +71,7 @@ function similarity(a, b) {
   a = (a || '').toLowerCase().replace(/\s+/g, ' ').trim();
   b = (b || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (a === b) return 1;
-  const matrix = Array.from({ length: a.length + 1 }, (_, i) => Array(b.length + 1).fill(0));
+  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
   for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
   for (let i = 1; i <= a.length; i++) {
@@ -88,7 +88,7 @@ function similarity(a, b) {
   return 1 - distance / Math.max(a.length, b.length);
 }
 
-// 👇 Это важно для Render, чтобы он смог найти сервер!
+// ===== Запуск сервера =====
 const port = process.env.PORT || 3000;
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server running on http://0.0.0.0:${port}`);

@@ -48,7 +48,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
         "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 50 })
+      body: JSON.stringify({ limit: 500 })
     });
 
     if (!response.ok) {
@@ -62,6 +62,8 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
 
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);
     const toDelete = new Set();
+
+console.time('⏱ Обработка дублей'); // 🔍 начало замера
 
     for (const groupTickets of Object.values(groups)) {
       const seenPairs = new Set();
@@ -86,6 +88,8 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
         }
       }
     }
+
+console.timeEnd('⏱ Обработка дублей'); // 🔍 конец замера
 
     const payload = {
       duplicates: Array.from(toDelete),

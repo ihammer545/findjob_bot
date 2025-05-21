@@ -64,7 +64,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
           const text2 = (t2.Requirements || '').slice(0, 600);
 
           const jaccard = jaccardSimilarity(text1, text2);
-          if (jaccard >= 0.25) {
+          if (jaccard >= 0.15) {
             const lev = levenshteinSimilarity(text1, text2);
             if (lev >= 0.83) {
               let toRemove = t2;

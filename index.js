@@ -16,10 +16,9 @@ app.post('/check', async (req, res) => {
   console.log('✅ Получен запрос на проверку дублей');
   res.send('🟢 Задача принята в обработку');
 
-  setTimeout(() => {
-    processDuplicatesAndSendWebhook(webhookUrl);
-  }, 0);
-});
+// Запускаем фоновую задачу безопасно
+processDuplicatesAndSendWebhook(webhookUrl)
+  .catch(err => console.error('❌ Ошибка фоновой задачи:', err));
 
 // 🔁 Фоновая обработка поиска дублей и отправка на вебхук
 async function processDuplicatesAndSendWebhook(webhookUrl) {

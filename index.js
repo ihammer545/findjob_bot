@@ -1,11 +1,3 @@
-import express from 'express';
-import fetch from 'node-fetch';
-
-const app = express();
-const port = process.env.PORT || 10000;
-
-app.use(express.json());
-
 app.get('/', async (req, res) => {
   try {
     const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
@@ -51,45 +43,11 @@ app.get('/', async (req, res) => {
           }
         }
       }
+    }
 
-    return res.json({ duplicates: Array.from(toDelete) });
+    return res.json({ duplicates: Array.from(toDelete) }); // ← Переместили сюда
 
   } catch (err) {
     return res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`✅ Server is running on http://0.0.0.0:${port}`);
-});
-
-// --- Утилиты ---
-function groupBy(arr, fn) {
-  return arr.reduce((acc, item) => {
-    const key = fn(item);
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(item);
-    return acc;
-  }, {});
-}
-
-function similarity(a, b) {
-  a = (a || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  b = (b || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  if (a === b) return 1;
-  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
-  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
-  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost
-      );
-    }
-  }
-  const distance = matrix[a.length][b.length];
-  return 1 - distance / Math.max(a.length, b.length);
-}

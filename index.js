@@ -159,24 +159,19 @@ async function isLikelyDuplicateGPT(textA, textB) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: "gpt-4o-mini",
+        temperature: 0,
+        max_tokens: 3,
         messages: [
           {
-            role: 'system',
-            content: 'Ты помощник, который определяет, являются ли два объявления о работе дубликатами.'
+            role: "system",
+            content: "Ты помощник, который сравнивает два текста. Ответь строго 'yes', если это одна и та же вакансия, или 'no', если это разные предложения. Никаких пояснений."
           },
           {
-            role: 'user',
-            content: `Сравни эти два текста и скажи, означают ли они одно и то же с точки зрения смысла. Ответь только "yes" или "no".
-
-Объявление 1:
-${textA}
-
-Объявление 2:
-${textB}`
+            role: "user",
+            content: `Текст 1:\n${textA}\n\nТекст 2:\n${textB}\n\nЭто дубликаты?`
           }
-        ],
-        temperature: 0.0
+        ]
       })
     });
 
@@ -188,6 +183,7 @@ ${textB}`
     return false; // в случае ошибки — не считать дубликатом
   }
 }
+
 
 
 app.listen(port, '0.0.0.0', () => {

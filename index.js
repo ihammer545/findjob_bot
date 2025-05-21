@@ -3,40 +3,25 @@ import fetch from 'node-fetch';
 
 const app = express();
 const port = process.env.PORT || 10000;
-if (!port) {
-  throw new Error("PORT is not defined");
-}
 
 app.use(express.json());
 
-/**
- * Проверочный маршрут — отвечает мгновенно "✅ OK"
- */
 app.get('/', (req, res) => {
   res.send('✅ OK');
 });
 
-/**
- * POST /check
- * Получает запрос от клиента, сразу отвечает, а затем запускает фоновую задачу
- */
+// Принимаем POST-запрос и запускаем фоновую задачу
 app.post('/check', async (req, res) => {
-  // const { webhookUrl } = req.body;
-  const webhookUrl = 'https://hook.eu2.make.com/g8kdpfddlaq70l31olejqx8ibtcpba9a'; // временно захардкожено
+  const webhookUrl = 'https://hook.eu2.make.com/g8kdpfddlaq70l31olejqx8ibtcpba9a';
   console.log('✅ Получен запрос на проверку дублей');
-
-  // Мгновенный ответ клиенту
   res.send('🟢 Задача принята в обработку');
 
-  // Фоновая обработка без ожидания
   setTimeout(() => {
     processDuplicatesAndSendWebhook(webhookUrl);
   }, 0);
 });
 
-/**
- * Фоновая обработка: получает записи из Botpress, ищет дубли и отправляет результат на webhook
- */
+// Основная логика фоновой обработки и отправки результатов
 async function processDuplicatesAndSendWebhook(webhookUrl) {
   try {
     console.log('⚙️ Начинаем фоновую обработку');
@@ -57,13 +42,11 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
       return;
     }
 
-    const result = await response.json();
-    const tickets = result.rows || [];
+    const json = await response.json();
+    const tickets = json.rows || [];
 
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);
     const toDelete = new Set();
-
-console.time('⏱ Обработка дублей'); // 🔍 начало замера
 
     for (const groupTickets of Object.values(groups)) {
       const seenPairs = new Set();
@@ -74,6 +57,9 @@ console.time('⏱ Обработка дублей'); // 🔍 начало зам
           const key = [t1.id, t2.id].sort().join('-');
           if (seenPairs.has(key)) continue;
           seenPairs.add(key);
+
+          const jaccard = jaccardSimilarity(t1.Requirements || '', t2.Requirements || '');
+          if (jaccard < 0.6) continue; // предварительный быстрый фильтр
 
           const sim = similarity(t1.Requirements || '', t2.Requirements || '');
           if (sim >= 0.85) {
@@ -89,8 +75,6 @@ console.time('⏱ Обработка дублей'); // 🔍 начало зам
       }
     }
 
-console.timeEnd('⏱ Обработка дублей'); // 🔍 конец замера
-
     const payload = {
       duplicates: Array.from(toDelete),
       total: tickets.length,
@@ -98,7 +82,6 @@ console.timeEnd('⏱ Обработка дублей'); // 🔍 конец за�
       timestamp: new Date().toISOString()
     };
 
-    // Отправка результата на webhook
     const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -112,9 +95,7 @@ console.timeEnd('⏱ Обработка дублей'); // 🔍 конец за�
   }
 }
 
-/**
- * Утилита: группирует массив по заданному ключу
- */
+// --- Утилиты ---
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -124,19 +105,13 @@ function groupBy(arr, fn) {
   }, {});
 }
 
-/**
- * Утилита: вычисляет схожесть двух строк (по Левенштейну)
- * Возвращает число от 0 до 1, где 1 — полное совпадение
- */
 function similarity(a, b) {
   a = (a || '').toLowerCase().replace(/\s+/g, ' ').trim();
   b = (b || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (a === b) return 1;
-
   const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
   for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
-
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
@@ -147,12 +122,18 @@ function similarity(a, b) {
       );
     }
   }
-
   const distance = matrix[a.length][b.length];
   return 1 - distance / Math.max(a.length, b.length);
 }
 
-// Запуск сервера
+function jaccardSimilarity(a, b) {
+  const setA = new Set((a || '').toLowerCase().split(/\s+/));
+  const setB = new Set((b || '').toLowerCase().split(/\s+/));
+  const intersection = [...setA].filter(x => setB.has(x));
+  const union = new Set([...setA, ...setB]);
+  return union.size === 0 ? 0 : intersection.length / union.size;
+}
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server is running on http://0.0.0.0:${port}`);
 });

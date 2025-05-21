@@ -20,8 +20,8 @@ app.get('/check', async (req, res) => {
     const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
       method: "POST",
       headers: {
-        "Authorization": "bearer bp_pat_...",
-        "x-bot-id": "...",
+        "Authorization": "bearer bp_pat_04UwT9GFhWqTk8w0pP2lozgJ73Z9SgRdtjw3",
+        "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ limit: 1000 })

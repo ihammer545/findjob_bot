@@ -18,7 +18,8 @@ app.get('/', async (req, res) => {
 
     if (!response.ok) {
       const text = await response.text();
-      return res.status(response.status).send(`❌ Ошибка Botpress:\n${text}`);
+      res.status(response.status).send(`❌ Ошибка Botpress:\n${text}`);
+      return;
     }
 
     const result = await response.json();

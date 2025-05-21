@@ -65,17 +65,21 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
 
           const jaccard = jaccardSimilarity(text1, text2);
           if (jaccard >= 0.15) {
-            const lev = levenshteinSimilarity(text1, text2);
-            if (lev >= 0.65) {
-              let toRemove = t2;
-              if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
-                toRemove = t1;
-              } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
-                toRemove = t2;
-              }
-              toDelete.add(toRemove.id);
-            }
-          }
+  const lev = levenshteinSimilarity(text1, text2);
+  if (lev >= 0.65) {
+    const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
+    if (!isDuplicate) continue;
+
+    let toRemove = t2;
+    if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
+      toRemove = t1;
+    } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
+      toRemove = t2;
+    }
+    toDelete.add(toRemove.id);
+  }
+}
+
         }
       }
     }
@@ -144,6 +148,47 @@ function levenshteinSimilarity(a, b) {
   const distance = matrix[a.length][b.length];
   return 1 - distance / Math.max(a.length, b.length);
 }
+
+//Функция проверки дублей через OpenAi
+async function isLikelyDuplicateGPT(textA, textB) {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, // ключ лучше держать в env
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'Ты помощник, который определяет, являются ли два объявления о работе дубликатами.'
+          },
+          {
+            role: 'user',
+            content: `Сравни эти два текста и скажи, означают ли они одно и то же с точки зрения смысла. Ответь только "yes" или "no".
+
+Объявление 1:
+${textA}
+
+Объявление 2:
+${textB}`
+          }
+        ],
+        temperature: 0.0
+      })
+    });
+
+    const result = await response.json();
+    const answer = result.choices?.[0]?.message?.content?.trim().toLowerCase();
+    return answer === 'yes';
+  } catch (err) {
+    console.error('❌ Ошибка при запросе к OpenAI:', err);
+    return false; // в случае ошибки — не считать дубликатом
+  }
+}
+
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server is running on http://0.0.0.0:${port}`);

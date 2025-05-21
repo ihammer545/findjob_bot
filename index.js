@@ -18,8 +18,7 @@ app.get('/', async (req, res) => {
 
     if (!response.ok) {
       const text = await response.text();
-      res.status(response.status).send(`❌ Ошибка Botpress:\n${text}`);
-      return;
+      return res.status(response.status).send(`❌ Ошибка Botpress:\n${text}`);
     }
 
     const result = await response.json();
@@ -52,13 +51,12 @@ app.get('/', async (req, res) => {
       }
 
       res.json({ duplicates: Array.from(toDelete) });
-
+    }
   } catch (err) {
     res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
 
-// --- Утилиты ---
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -89,8 +87,8 @@ function similarity(a, b) {
   return 1 - distance / Math.max(a.length, b.length);
 }
 
-// --- Запуск сервера ---
-const port = process.env.PORT || 3000;
+// ⬇ ОБЯЗАТЕЛЬНО: слушаем порт из ENV
+const port = process.env.PORT || 10000;
 app.listen(port, '0.0.0.0', () => {
-  console.log(`✅ Server running on http://0.0.0.0:${port}`);
+  console.log(`✅ Server is running on http://0.0.0.0:${port}`);
 });

@@ -2,7 +2,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 
 const app = express();
-const port = process.env.PORT;
+const port = process.env.PORT || 10000;
 if (!port) {
   throw new Error("PORT is not defined");
 }

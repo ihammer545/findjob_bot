@@ -2,6 +2,8 @@ import express from 'express';
 import fetch from 'node-fetch';
 
 const app = express();
+const port = process.env.PORT || 10000;
+
 app.use(express.json());
 
 app.get('/', async (req, res) => {
@@ -50,13 +52,20 @@ app.get('/', async (req, res) => {
         }
       }
 
-      res.json({ duplicates: Array.from(toDelete) });
-    }
+    // ✅ Ответ ОДИН раз
+    return res.json({ duplicates: Array.from(toDelete) });
+
   } catch (err) {
-    res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
+    // ✅ Ответ только если не был отправлен до этого
+    return res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
 
+app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ Server is running on http://0.0.0.0:${port}`);
+});
+
+// Утилиты
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -86,9 +95,3 @@ function similarity(a, b) {
   const distance = matrix[a.length][b.length];
   return 1 - distance / Math.max(a.length, b.length);
 }
-
-// ⬇ ОБЯЗАТЕЛЬНО: слушаем порт из ENV
-const port = process.env.PORT || 10000;
-app.listen(port, '0.0.0.0', () => {
-  console.log(`✅ Server is running on http://0.0.0.0:${port}`);
-});

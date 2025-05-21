@@ -58,7 +58,6 @@ app.get('/', async (req, res) => {
 });
 
 // --- Утилиты ---
-
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -90,7 +89,6 @@ function similarity(a, b) {
 }
 
 // --- Запуск сервера ---
-
 const port = process.env.PORT || 3000;
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server running on http://0.0.0.0:${port}`);

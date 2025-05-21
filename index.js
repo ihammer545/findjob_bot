@@ -24,13 +24,19 @@ app.get('/check', async (req, res) => {
         "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 1000 })
+      body: JSON.stringify({ limit: 50 })
     });
+
+ clearTimeout(timeout);
+    console.log('🌐 Ответ от Botpress получен');
 
     if (!response.ok) {
       const text = await response.text();
       return res.status(response.status).send(`❌ Ошибка Botpress:\n${text}`);
     }
+
+   const result = await response.json();
+    console.log(`📦 Получено строк: ${result.rows?.length ?? 0}`);
 
     const result = await response.json();
     const tickets = result.rows || [];
@@ -67,7 +73,8 @@ return res.json({ duplicates: Array.from(toDelete) });
 
     return res.json({ duplicates: Array.from(toDelete) });
 
-  } catch (err) {
+   } catch (err) {
+    console.error('❌ Ошибка при обработке /check:', err);
     return res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });

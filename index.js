@@ -1,5 +1,6 @@
 import express from 'express';
 import fetch from 'node-fetch';
+import AbortController from 'abort-controller'; // вручную ставить не надо в v2
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -17,6 +18,12 @@ app.get('/check', async (req, res) => {
   try {
   console.log('🔍 Запрос на /check получен. Начинаем обработку...');
 
+ const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+      console.error('❌ fetch прерван по таймауту (10 сек)');
+    }, 10000); // 10 секунд
+
     const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
       method: "POST",
       headers: {
@@ -24,7 +31,8 @@ app.get('/check', async (req, res) => {
         "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 50 })
+      body: JSON.stringify({ limit: 50 }),
+          signal: controller.signal
     });
 
  clearTimeout(timeout);

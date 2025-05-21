@@ -33,7 +33,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
         "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 500 })
+      body: JSON.stringify({ limit: 1000 })
     });
 
     if (!response.ok) {

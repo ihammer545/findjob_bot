@@ -1,6 +1,6 @@
 import express from 'express';
 import fetch from 'node-fetch';
-import AbortController from 'abort-controller'; // вручную ставить не надо в v2
+
 
 const app = express();
 const port = process.env.PORT || 10000;

@@ -23,6 +23,7 @@ app.post('/check', async (req, res) => {
 
 // 🔁 Фоновая обработка поиска дублей и отправка на вебхук
 async function processDuplicatesAndSendWebhook(webhookUrl) {
+  let gptRequests = 0;
   console.time('⏱️ Обработка заняла');
 
   try {
@@ -63,9 +64,10 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
           const text2 = (t2.Requirements || '').slice(0, 400);
 
           const jaccard = jaccardSimilarity(text1, text2);
-          if (jaccard >= 0.15) {
+          if (jaccard >= 0.08) {
             const lev = levenshteinSimilarity(text1, text2);
-            if (lev >= 0.65) {
+            if (lev >= 0.55) {
+              gptRequests++;
               const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
               if (!isDuplicate) continue;
 
@@ -101,6 +103,8 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
   }
 
   console.timeEnd('⏱️ Обработка заняла');
+console.log(`📊 Количество обращений к GPT: ${gptRequests}`);
+
 }
 
 // Утилита группировки

@@ -66,7 +66,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
           const jaccard = jaccardSimilarity(text1, text2);
           if (jaccard >= 0.15) {
             const lev = levenshteinSimilarity(text1, text2);
-            if (lev >= 0.75) {
+            if (lev >= 0.65) {
               let toRemove = t2;
               if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
                 toRemove = t1;

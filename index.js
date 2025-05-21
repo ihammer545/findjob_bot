@@ -52,11 +52,9 @@ app.get('/', async (req, res) => {
         }
       }
 
-    // ✅ Ответ ОДИН раз
     return res.json({ duplicates: Array.from(toDelete) });
 
   } catch (err) {
-    // ✅ Ответ только если не был отправлен до этого
     return res.status(500).send(`❌ Внутренняя ошибка:\n${err.message}`);
   }
 });
@@ -65,7 +63,7 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server is running on http://0.0.0.0:${port}`);
 });
 
-// Утилиты
+// --- Утилиты ---
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);

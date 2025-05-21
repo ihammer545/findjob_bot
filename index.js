@@ -46,7 +46,7 @@ app.get('/check', async (req, res) => {
    const result = await response.json();
     console.log(`📦 Получено строк: ${result.rows?.length ?? 0}`);
 
-    const result = await response.json();
+ 
     const tickets = result.rows || [];
 
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);

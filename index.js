@@ -60,13 +60,13 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
           seenPairs.add(key);
 
           // ✂️ Ограничиваем сравниваемый текст
-          const text1 = (t1.Requirements || '').slice(0, 600);
-          const text2 = (t2.Requirements || '').slice(0, 600);
+          const text1 = (t1.Requirements || '').slice(0, 400);
+          const text2 = (t2.Requirements || '').slice(0, 400);
 
           const jaccard = jaccardSimilarity(text1, text2);
           if (jaccard >= 0.15) {
             const lev = levenshteinSimilarity(text1, text2);
-            if (lev >= 0.83) {
+            if (lev >= 0.75) {
               let toRemove = t2;
               if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
                 toRemove = t1;

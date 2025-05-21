@@ -16,9 +16,10 @@ app.post('/check', async (req, res) => {
   console.log('✅ Получен запрос на проверку дублей');
   res.send('🟢 Задача принята в обработку');
 
-// Запускаем фоновую задачу безопасно
-processDuplicatesAndSendWebhook(webhookUrl)
-  .catch(err => console.error('❌ Ошибка фоновой задачи:', err));
+  // 🔁 Запускаем фоновую задачу безопасно
+  processDuplicatesAndSendWebhook(webhookUrl)
+    .catch(err => console.error('❌ Ошибка фоновой задачи:', err));
+});
 
 // 🔁 Фоновая обработка поиска дублей и отправка на вебхук
 async function processDuplicatesAndSendWebhook(webhookUrl) {
@@ -32,7 +33,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
         "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 1000 })  // макс. лимит Botpress API
+      body: JSON.stringify({ limit: 1000 })
     });
 
     if (!response.ok) {
@@ -58,27 +59,25 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
           if (seenPairs.has(key)) continue;
           seenPairs.add(key);
 
-          // ✂️ Ограничиваем сравниваемый текст
           const text1 = (t1.Requirements || '').slice(0, 400);
           const text2 = (t2.Requirements || '').slice(0, 400);
 
           const jaccard = jaccardSimilarity(text1, text2);
           if (jaccard >= 0.15) {
-  const lev = levenshteinSimilarity(text1, text2);
-  if (lev >= 0.65) {
-    const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
-    if (!isDuplicate) continue;
+            const lev = levenshteinSimilarity(text1, text2);
+            if (lev >= 0.65) {
+              const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
+              if (!isDuplicate) continue;
 
-    let toRemove = t2;
-    if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
-      toRemove = t1;
-    } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
-      toRemove = t2;
-    }
-    toDelete.add(toRemove.id);
-  }
-}
-
+              let toRemove = t2;
+              if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
+                toRemove = t1;
+              } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
+                toRemove = t2;
+              }
+              toDelete.add(toRemove.id);
+            }
+          }
         }
       }
     }
@@ -104,7 +103,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
   console.timeEnd('⏱️ Обработка заняла');
 }
 
-// 🧮 Утилита группировки
+// Утилита группировки
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -114,7 +113,7 @@ function groupBy(arr, fn) {
   }, {});
 }
 
-// ✅ Jaccard similarity — для быстрой оценки схожести
+// Быстрая оценка схожести
 function jaccardSimilarity(a, b) {
   const setA = new Set(a.toLowerCase().split(/\s+/));
   const setB = new Set(b.toLowerCase().split(/\s+/));
@@ -123,7 +122,7 @@ function jaccardSimilarity(a, b) {
   return intersection.size / union.size;
 }
 
-// ✅ Levenshtein similarity — для точной оценки схожести
+// Точная оценка схожести
 function levenshteinSimilarity(a, b) {
   a = a.toLowerCase().replace(/\s+/g, ' ').trim();
   b = b.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -148,13 +147,13 @@ function levenshteinSimilarity(a, b) {
   return 1 - distance / Math.max(a.length, b.length);
 }
 
-//Функция проверки дублей через OpenAi
+// Проверка дублей через OpenAI
 async function isLikelyDuplicateGPT(textA, textB) {
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, // ключ лучше держать в env
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -179,11 +178,9 @@ async function isLikelyDuplicateGPT(textA, textB) {
     return answer === 'yes';
   } catch (err) {
     console.error('❌ Ошибка при запросе к OpenAI:', err);
-    return false; // в случае ошибки — не считать дубликатом
+    return false;
   }
 }
-
-
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server is running on http://0.0.0.0:${port}`);

@@ -3,29 +3,31 @@ import fetch from 'node-fetch';
 
 const app = express();
 const port = process.env.PORT || 10000;
-if (!port) throw new Error("PORT is not defined");
 
 app.use(express.json());
 
+// Проверка доступности сервиса
 app.get('/', (req, res) => {
   res.send('✅ OK');
 });
 
+// Асинхронная проверка дублей, ответ сразу
 app.post('/check', async (req, res) => {
-  // const { webhookUrl } = req.body;
   const webhookUrl = 'https://hook.eu2.make.com/g8kdpfddlaq70l31olejqx8ibtcpba9a';
   console.log('✅ Получен запрос на проверку дублей');
   res.send('🟢 Задача принята в обработку');
 
+  // Фоновая обработка
   setTimeout(() => {
     processDuplicatesAndSendWebhook(webhookUrl);
   }, 0);
 });
 
+// --- Основная логика поиска дублей ---
 async function processDuplicatesAndSendWebhook(webhookUrl) {
   try {
     console.log('⚙️ Начинаем фоновую обработку');
-    console.time('⏱ Обработка дублей');
+    console.time('⏱️ Время обработки');
 
     const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
       method: "POST",
@@ -34,7 +36,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
         "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 1000 }) // изменяем лимит тут
+      body: JSON.stringify({ limit: 1000 })
     });
 
     if (!response.ok) {
@@ -43,35 +45,36 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
       return;
     }
 
-    const json = await response.json();
-    const tickets = json.rows || [];
-
+    const { rows: tickets = [] } = await response.json();
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);
     const toDelete = new Set();
 
     for (const groupTickets of Object.values(groups)) {
       const seenPairs = new Set();
       for (let i = 0; i < groupTickets.length; i++) {
-        const t1 = groupTickets[i];
+        const t1 = normalizeText(groupTickets[i].Requirements);
         for (let j = i + 1; j < groupTickets.length; j++) {
-          const t2 = groupTickets[j];
-          const key = [t1.id, t2.id].sort().join('-');
+          const t2 = normalizeText(groupTickets[j].Requirements);
+          const key = [groupTickets[i].id, groupTickets[j].id].sort().join('-');
           if (seenPairs.has(key)) continue;
           seenPairs.add(key);
 
-          const short1 = (t1.Requirements || '').slice(0, 200);
-          const short2 = (t2.Requirements || '').slice(0, 200);
+          const jaccard = jaccardSimilarity(t1, t2);
+          if (jaccard < 0.35) continue;
 
-          const jaccard = jaccardSimilarity(short1, short2);
-          if (jaccard < 0.4) continue;
-
-          const sim = similarity(short1, short2);
-          if (sim >= 0.85) {
-            let toRemove = t2;
-            if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
-              toRemove = t1;
-            } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
-              toRemove = t2;
+          const lev = levenshteinSimilarity(t1, t2);
+          if (lev >= 0.83) {
+            let toRemove = groupTickets[j];
+            if (
+              groupTickets[i].Username === 'Anonymous participant' &&
+              groupTickets[j].Username !== 'Anonymous participant'
+            ) {
+              toRemove = groupTickets[i];
+            } else if (
+              groupTickets[j].Username === 'Anonymous participant' &&
+              groupTickets[i].Username !== 'Anonymous participant'
+            ) {
+              toRemove = groupTickets[j];
             }
             toDelete.add(toRemove.id);
           }
@@ -93,7 +96,7 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
     });
 
     console.log('📤 Отправлено на вебхук:', webhookResponse.status);
-    console.timeEnd('⏱ Обработка дублей');
+    console.timeEnd('⏱️ Время обработки');
 
   } catch (err) {
     console.error('❌ Ошибка в фоновом процессе:', err);
@@ -101,6 +104,16 @@ async function processDuplicatesAndSendWebhook(webhookUrl) {
 }
 
 // --- Утилиты ---
+
+function normalizeText(text) {
+  return (text || '')
+    .toLowerCase()
+    .replace(/tel\s*\+?\d{6,}/gi, '') // Удаление номера телефона
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 400); // Обрезка до 400 символов
+}
+
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);
@@ -110,9 +123,7 @@ function groupBy(arr, fn) {
   }, {});
 }
 
-function similarity(a, b) {
-  a = (a || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
-  b = (b || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
+function levenshteinSimilarity(a, b) {
   if (a === b) return 1;
   const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
@@ -132,13 +143,14 @@ function similarity(a, b) {
 }
 
 function jaccardSimilarity(a, b) {
-  const setA = new Set((a || '').toLowerCase().split(/\s+/).slice(0, 50));
-  const setB = new Set((b || '').toLowerCase().split(/\s+/).slice(0, 50));
+  const setA = new Set(a.split(/\s+/));
+  const setB = new Set(b.split(/\s+/));
   const intersection = new Set([...setA].filter(x => setB.has(x)));
   const union = new Set([...setA, ...setB]);
   return intersection.size / union.size;
 }
 
+// --- Запуск сервера ---
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server is running on http://0.0.0.0:${port}`);
 });

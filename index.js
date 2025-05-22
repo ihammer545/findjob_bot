@@ -4,7 +4,7 @@ import updateCountries from './countryUpdater.js';
 
 const app = express();
 const port = process.env.PORT || 10000;
-const updateCountries = require('./countryUpdater');
+
 
 
 app.use(express.json());

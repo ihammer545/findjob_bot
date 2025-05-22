@@ -161,3 +161,5 @@ async function isLikelyDuplicateGPT(textA, textB) {
     return false;
   }
 }
+
+export default processDuplicatesAndSendWebhook;

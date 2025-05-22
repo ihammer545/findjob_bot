@@ -1,7 +1,8 @@
 // duplicateProcessor.js
 import fetch from 'node-fetch';
 
-export default async function processDuplicatesAndSendWebhook(webhookUrl) {
+// Основная функция
+export async function processDuplicatesAndSendWebhook(webhookUrl) {
   let gptRequests = 0;
   console.time('⏱️ Обработка заняла');
 
@@ -9,8 +10,8 @@ export default async function processDuplicatesAndSendWebhook(webhookUrl) {
     const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
       method: "POST",
       headers: {
-        "Authorization": "bearer bp_pat_04UwT9GFhWqTk8w0pP2lozgJ73Z9SgRdtjw3",
-        "x-bot-id": "278175a2-b203-4af3-a6be-b2952f74edec",
+        "Authorization": `bearer ${process.env.BOTPRESS_API_TOKEN}`,
+        "x-bot-id": process.env.BOTPRESS_BOT_ID,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ limit: 1000 })
@@ -85,6 +86,7 @@ export default async function processDuplicatesAndSendWebhook(webhookUrl) {
   console.log(`📊 Количество обращений к GPT: ${gptRequests}`);
 }
 
+// Утилита группировки
 function groupBy(arr, fn) {
   return arr.reduce((acc, item) => {
     const key = fn(item);

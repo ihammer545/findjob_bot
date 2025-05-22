@@ -1,13 +1,29 @@
 import express from 'express';
 import fetch from 'node-fetch';
+import updateCountries from './countryUpdater.js';
 
 const app = express();
 const port = process.env.PORT || 10000;
+const updateCountries = require('./countryUpdater');
+
 
 app.use(express.json());
 
 app.get('/', (req, res) => {
   res.send('✅ OK');
+});
+
+// 🌍 Запуск обновления стран по маршруту /Country
+app.get('/Country', async (req, res) => {
+  try {
+    console.log('🚀 Запуск обновления стран через /Country');
+    const log = await updateCountries();
+    console.log('✅ Обработка завершена. Статус:\n' + log.join('\n'));
+    res.send(`<pre>${log.join('\n')}</pre>`);
+  } catch (err) {
+    console.error('❌ Ошибка в updateCountries:', err);
+    res.status(500).send('❌ Произошла ошибка при обновлении стран');
+  }
 });
 
 // 📩 Основной маршрут: моментально принимает задачу

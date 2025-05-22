@@ -16,11 +16,11 @@ async function updateCountries() {
 
   const results = []
   let gptCalls = 0
+  const rowsToRetry = []
 
   try {
     // 1. Получение строк
     const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
-     
       limit: 1000
     }, { headers: HEADERS })
 
@@ -48,91 +48,134 @@ async function updateCountries() {
       let gptCountry = ''
       let gptCity = ''
 
-     try {
-  // 1. Получаем страну
-  const gptCountryResp = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-4o-mini',
-      temperature: 0,
-      max_tokens: 10,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a helpful assistant. Given a city name or place, respond strictly with the name of the country it belongs to in English. Only return the country name (e.g. "Austria").'
-        },
-        {
-          role: 'user',
-          content: `Which country does '${city}' belong to?`
-        }
-      ]
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  )
-  gptCountry = gptCountryResp.data?.choices?.[0]?.message?.content?.trim()
+      try {
+        // 1. Получаем страну по городу
+        const gptCountryResp = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            max_tokens: 10,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a helpful assistant. Given a city name or place, respond strictly with the name of the country it belongs to in English. Only return the country name (e.g. "Austria"). If you are unsure, respond with "Unknown".'
+              },
+              {
+                role: 'user',
+                content: `Which country does '${city}' belong to?`
+              }
+            ]
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        gptCountry = gptCountryResp.data?.choices?.[0]?.message?.content?.trim()
 
-  // 2. Получаем английское название города
-  const gptCityResp = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-4o-mini',
-      temperature: 0,
-      max_tokens: 20,
-      messages: [
-        {
-          role: 'system',
-          content: 'Return the English name of the given city or place. Only return the city name (e.g. "Vienna").'
-        },
-        {
-          role: 'user',
-          content: `What is the English name for '${city}'?`
-        }
-      ]
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  )
-  gptCity = gptCityResp.data?.choices?.[0]?.message?.content?.trim()
+        // 2. Получаем английское название города
+        const gptCityResp = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            max_tokens: 20,
+            messages: [
+              {
+                role: 'system',
+                content: 'Return the English name of the given city or place. Only return the city name (e.g. "Vienna").'
+              },
+              {
+                role: 'user',
+                content: `What is the English name for '${city}'?`
+              }
+            ]
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        gptCity = gptCityResp.data?.choices?.[0]?.message?.content?.trim()
 
-} catch (gptErr) {
-  console.error(`❌ GPT API error for city '${city}':`, gptErr.response?.data || gptErr.message)
-  results.push(`❌ GPT error for '${city}': ${gptErr.message}`)
-  rowsToDelete.push(rowId)
-  continue
-}
-
-      if (!gptCountry || gptCountry.toLowerCase().includes('invalid') || gptCountry.toLowerCase() === 'unknown') {
-        results.push(`❌ Could not determine country for '${city}'`)
+      } catch (gptErr) {
+        console.error(`❌ GPT API error for city '${city}':`, gptErr.response?.data || gptErr.message)
+        results.push(`❌ GPT error for '${city}': ${gptErr.message}`)
         rowsToDelete.push(rowId)
         continue
       }
 
-     const updatedRow = {
-  id: rowId,
-  Country: gptCountry
-}
+      if (!gptCountry || gptCountry.toLowerCase().includes('unknown')) {
+        results.push(`❌ Could not determine country for '${city}', will retry with Requirements`)
+        rowsToRetry.push(row)
+        continue
+      }
 
-// Защита от мусора в ответе GPT по городу
-if (gptCity && !/unknown|don\'?t know|invalid|not sure/i.test(gptCity)) {
-  updatedRow.City = gptCity
-} else {
-  results.push(`⚠️ GPT вернул сомнительное значение города для '${city}': '${gptCity}' — не обновляем поле City`)
-}
+      const updatedRow = {
+        id: rowId,
+        Country: gptCountry
+      }
 
-
-      
+      if (gptCity && !/unknown|don'?t know|invalid|not sure/i.test(gptCity)) {
+        updatedRow.City = gptCity
+      } else {
+        results.push(`⚠️ GPT вернул сомнительное значение города для '${city}': '${gptCity}' — не обновляем поле City`)
+      }
 
       rowsToUpdate.push(updatedRow)
       results.push(`📝 Prepared row ${rowId} update: ${JSON.stringify(updatedRow)}`)
+    }
+
+    // 🔁 Повторная попытка по полю Requirements
+    for (const row of rowsToRetry) {
+      const rowId = row.id
+      const reqText = row.Requirements?.trim()
+      if (!reqText) continue
+
+      try {
+        gptCalls++
+        const gptRetryResp = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            max_tokens: 10,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a helpful assistant. Based on the text of a job description, determine the country this job is likely located in. Only return the country name in English. If you are unsure, respond with "Unknown".'
+              },
+              {
+                role: 'user',
+                content: `Determine the country for this job: '${reqText}'`
+              }
+            ]
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+
+        const retryCountry = gptRetryResp.data?.choices?.[0]?.message?.content?.trim()
+
+        if (retryCountry && retryCountry.toLowerCase() !== 'unknown') {
+          rowsToUpdate.push({ id: rowId, Country: retryCountry })
+          results.push(`🔁 Updated via Requirements row ${rowId} with country: ${retryCountry}`)
+        } else {
+          results.push(`⚠️ Still could not determine country for row ${rowId}`)
+        }
+      } catch (err) {
+        console.error(`❌ GPT retry error for row ${row.id}:`, err.response?.data || err.message)
+        results.push(`❌ GPT retry error for row ${row.id}: ${err.message}`)
+      }
     }
 
     // 2. Обновление строк
@@ -157,7 +200,7 @@ if (gptCity && !/unknown|don\'?t know|invalid|not sure/i.test(gptCity)) {
     // 3. Удаление строк
     if (rowsToDelete.length > 0) {
       try {
-        const deleteUrl = `${API_URL}/rows/delete`  // исправленный путь
+        const deleteUrl = `${API_URL}/rows/delete`
         await axios.post(deleteUrl, { ids: rowsToDelete }, { headers: HEADERS })
         console.log(`🗑️ Удалено записей: ${rowsToDelete.length}`)
         results.push(`🗑️ Deleted ${rowsToDelete.length} rows.`)

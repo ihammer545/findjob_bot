@@ -116,5 +116,6 @@ async function updateCountries() {
   return results
 }
 
-module.exports = updateCountries
+
+export default updateCountries;
 

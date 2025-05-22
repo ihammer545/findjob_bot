@@ -1,4 +1,4 @@
-const axios = require('axios')
+import axios from 'axios'
 
 async function updateCountries() {
   const API_URL = process.env.BOTPRESS_API_URL       // https://api.botpress.cloud/v1/tables/TicketsTable/rows

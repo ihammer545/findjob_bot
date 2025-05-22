@@ -47,42 +47,70 @@ async function updateCountries() {
       }
 
       gptCalls++
-      let gptCountry = null
+      let gptCountry = ''
+      let gptCity = ''
 
-      try {
-        const gptResp = await axios.post(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            max_tokens: 10,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Given a city name (or a country name in any language), respond strictly with the name of the country it belongs to in English. Only return the country name (e.g. "Austria", "Ukraine").'
-              },
-              {
-                role: 'user',
-                content: `Which country does the city or place '${city}' belong to?`
-              }
-            ]
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: 10000
-          }
-        )
-
-        gptCountry = gptResp.data?.choices?.[0]?.message?.content?.trim()
-      } catch (gptErr) {
-        console.error(`❌ GPT API error for city '${city}':`, gptErr.response?.data || gptErr.message)
-        results.push(`❌ GPT error for '${city}': ${gptErr.message}`)
-        rowsToDelete.push(rowId)
-        continue
+     try {
+  // 1. Получаем страну
+  const gptCountryResp = await axios.post(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      max_tokens: 10,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant. Given a city name or place, respond strictly with the name of the country it belongs to in English. Only return the country name (e.g. "Austria").'
+        },
+        {
+          role: 'user',
+          content: `Which country does '${city}' belong to?`
+        }
+      ]
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
       }
+    }
+  )
+  gptCountry = gptCountryResp.data?.choices?.[0]?.message?.content?.trim()
+
+  // 2. Получаем английское название города
+  const gptCityResp = await axios.post(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      max_tokens: 20,
+      messages: [
+        {
+          role: 'system',
+          content: 'Return the English name of the given city or place. Only return the city name (e.g. "Vienna").'
+        },
+        {
+          role: 'user',
+          content: `What is the English name for '${city}'?`
+        }
+      ]
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  )
+  gptCity = gptCityResp.data?.choices?.[0]?.message?.content?.trim()
+
+} catch (gptErr) {
+  console.error(`❌ GPT API error for city '${city}':`, gptErr.response?.data || gptErr.message)
+  results.push(`❌ GPT error for '${city}': ${gptErr.message}`)
+  rowsToDelete.push(rowId)
+  continue
+}
 
       if (!gptCountry || gptCountry.toLowerCase().includes('invalid') || gptCountry.toLowerCase() === 'unknown') {
         results.push(`❌ Could not determine country for '${city}'`)
@@ -90,14 +118,20 @@ async function updateCountries() {
         continue
       }
 
-      const updatedRow = {
-        id: rowId,
-        Country: gptCountry
-      }
+     const updatedRow = {
+  id: rowId,
+  Country: gptCountry
+}
 
-      if (city.toLowerCase() === gptCountry.toLowerCase()) {
-        updatedRow.City = gptCountry
-      }
+// Защита от мусора в ответе GPT по городу
+if (gptCity && !/unknown|don\'?t know|invalid|not sure/i.test(gptCity)) {
+  updatedRow.City = gptCity
+} else {
+  results.push(`⚠️ GPT вернул сомнительное значение города для '${city}': '${gptCity}' — не обновляем поле City`)
+}
+
+
+      
 
       rowsToUpdate.push(updatedRow)
       results.push(`📝 Prepared row ${rowId} update: ${JSON.stringify(updatedRow)}`)

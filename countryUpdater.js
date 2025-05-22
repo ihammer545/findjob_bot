@@ -106,7 +106,7 @@ async function updateCountries() {
     // 2. Обновление строк
     if (rowsToUpdate.length > 0) {
       try {
-        const updateResp = await axios.put(API_URL, { rows: rowsToUpdate }, { headers: HEADERS })
+        const updateResp = await axios.put(`${API_URL}/rows`, { rows: rowsToUpdate }, { headers: HEADERS })
         console.log(`✅ Записей обновлено: ${rowsToUpdate.length}`)
         results.push(`✅ Updated ${rowsToUpdate.length} rows.`)
 

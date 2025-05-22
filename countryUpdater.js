@@ -17,7 +17,7 @@ async function updateCountries() {
   const results = []
 
   // 1. Получаем строки
-  const fetchResponse = await axios.post(`${API_URL}/find`, {
+  const fetchResponse = await axios.post(`${API_URL}/rows/find`, ...), {
     filter: {
       id: { $in: [4085, 4086, 4087] }
     },

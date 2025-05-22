@@ -71,10 +71,11 @@ async function updateCountries() {
 
     const gptCountry = gptResp.data?.choices?.[0]?.message?.content?.trim()
 
-    if (!gptCountry || gptCountry.toLowerCase() === 'unknown') {
-      results.push(`❌ Could not determine country for '${city}'`)
-      continue
-    }
+  if (!gptCountry || gptCountry.toLowerCase().includes('invalid') || gptCountry.toLowerCase() === 'unknown') {
+  results.push(`❌ Could not determine country for '${city}'`);
+  rowsToDelete.push(rowId); // <--- ДОБАВЬ ЭТО
+  continue;
+}
 
     const updatedRow = {
       id: rowId,
@@ -95,9 +96,11 @@ async function updateCountries() {
     results.push(`✅ Updated ${rowsToUpdate.length} rows.`)
     console.log(`✅ Записей обновлено: ${rowsToUpdate.length}`)
 
-    if (updateResp.data?.errors?.length) {
-      results.push(`⚠️ Ошибки при обновлении:\n${JSON.stringify(updateResp.data.errors)}`)
-    }
+   if (updateResp.data?.errors?.length) {
+  console.log(`❗ Ошибки при обновлении:`, updateResp.data.errors);
+  results.push(`⚠️ Ошибки при обновлении:\n${JSON.stringify(updateResp.data.errors)}`);
+}
+
   } else {
     console.log(`⚠️ Обновлять нечего.`)
   }

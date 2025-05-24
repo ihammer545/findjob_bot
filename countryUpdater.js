@@ -1,7 +1,13 @@
 import axios from 'axios'
 
+const MAX_RPM = 240
+const DELAY = Math.ceil(60000 / MAX_RPM)
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 async function updateCountries() {
-  const API_URL = process.env.BOTPRESS_API_URL       // https://api.botpress.cloud/v1/tables/TicketsTable/rows
+  const API_URL = process.env.BOTPRESS_API_URL
   const BOT_ID = process.env.BOTPRESS_BOT_ID
   const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
   const BP_TOKEN = process.env.BOTPRESS_API_TOKEN
@@ -18,8 +24,9 @@ async function updateCountries() {
   let gptCalls = 0
   const rowsToRetry = []
 
+  const isValidField = val => val && !/null|unknown|not sure|don't know|invalid|n\/a/i.test(val)
+
   try {
-    // 1. Получение строк
     const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
       limit: 1000
     }, { headers: HEADERS })
@@ -37,33 +44,36 @@ async function updateCountries() {
     for (const row of rows) {
       const rowId = row.id
       const city = row.City?.trim()
+      const requirements = row.Requirements?.trim()
 
-      if (!city) {
+      if (!city && !requirements) {
         rowsToDelete.push(rowId)
-        results.push(`🗑️ Marked row ${rowId} for deletion (City is null)`)
+        results.push(`🗑️ Marked row ${rowId} for deletion (No City or Requirements)`)
         continue
       }
 
       gptCalls++
-      let gptCountry = ''
-      let gptCity = ''
+      await sleep(DELAY)
+
+      let Country = ''
+      let Region = ''
+      let PhoneNumber = ''
 
       try {
-        // 1. Получаем страну по городу
-        const gptCountryResp = await axios.post(
+        const gptUnifiedResp = await axios.post(
           'https://api.openai.com/v1/chat/completions',
           {
             model: 'gpt-4o-mini',
             temperature: 0,
-            max_tokens: 10,
+            max_tokens: 150,
             messages: [
               {
                 role: 'system',
-                content: 'You are a helpful assistant. Given a city name or place, respond strictly with the name of the country it belongs to in English. Only return the country name (e.g. "Austria"). If you are unsure, respond with "Unknown".'
+                content: `You are a data extractor for job listings. Based on the input, extract the following:\n\n- Country: Determine the country of the job location using the city name if provided, or the full text if not. Answer only if you are confident, otherwise return \"null\".\n- Region: Determine the region/state/voivodeship/land/province the city belongs to, in English. If unsure, return \"null\".\n- Phone number: Extract the phone number from the text. Return only digits, no symbols or spaces. If missing, return \"null\".\n\nRespond strictly in this JSON format:\n{\n  \"Country\": \"...\",\n  \"Region\": \"...\",\n  \"Phone number\": \"...\"\n}`
               },
               {
                 role: 'user',
-                content: `Which country does '${city}' belong to?`
+                content: `City: '${city}'\nText: ${requirements}`
               }
             ]
           },
@@ -74,111 +84,52 @@ async function updateCountries() {
             }
           }
         )
-        gptCountry = gptCountryResp.data?.choices?.[0]?.message?.content?.trim()
 
-        // 2. Получаем английское название города
-        const gptCityResp = await axios.post(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            max_tokens: 20,
-            messages: [
-              {
-                role: 'system',
-                content: 'Return the English name of the given city or place. Only return the city name (e.g. "Vienna").'
-              },
-              {
-                role: 'user',
-                content: `What is the English name for '${city}'?`
-              }
-            ]
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-        gptCity = gptCityResp.data?.choices?.[0]?.message?.content?.trim()
+        let parsedJson = {}
+        try {
+          parsedJson = JSON.parse(gptUnifiedResp.data?.choices?.[0]?.message?.content)
+        } catch (parseErr) {
+          console.error('❌ JSON parse error:', parseErr)
+          results.push(`❌ JSON parse error in row ${rowId}`)
+          rowsToRetry.push(row)
+          continue
+        }
+
+        Country = parsedJson?.Country?.trim()
+        Region = parsedJson?.Region?.trim()
+        PhoneNumber = parsedJson?.['Phone number']?.trim()
 
       } catch (gptErr) {
-        console.error(`❌ GPT API error for city '${city}':`, gptErr.response?.data || gptErr.message)
-        results.push(`❌ GPT error for '${city}': ${gptErr.message}`)
-        rowsToDelete.push(rowId)
-        continue
-      }
-
-      if (!gptCountry || gptCountry.toLowerCase().includes('unknown')) {
-        results.push(`❌ Could not determine country for '${city}', will retry with Requirements`)
+        console.error(`❌ GPT API error for row ${rowId}:`, gptErr.response?.data || gptErr.message)
+        results.push(`❌ GPT error for row ${rowId}: ${gptErr.message}`)
         rowsToRetry.push(row)
         continue
       }
 
-      const updatedRow = {
-        id: rowId,
-        Country: gptCountry
+      if (!isValidField(Country)) {
+        results.push(`❌ Could not determine country for row ${rowId}`)
+        rowsToRetry.push(row)
+        continue
       }
 
-      if (gptCity && !/unknown|don'?t know|invalid|not sure/i.test(gptCity)) {
-        updatedRow.City = gptCity
+      const updatedRow = { id: rowId, Country }
+
+      if (isValidField(Region)) {
+        updatedRow.Region = Region
       } else {
-        results.push(`⚠️ GPT вернул сомнительное значение города для '${city}': '${gptCity}' — не обновляем поле City`)
+        results.push(`⚠️ GPT вернул сомнительное значение региона для row ${rowId}: '${Region}' — не обновляем поле Region`)
+      }
+
+      if (isValidField(PhoneNumber)) {
+        updatedRow['Phone number'] = PhoneNumber
+      } else {
+        results.push(`⚠️ GPT не смог извлечь номер телефона для row ${rowId}: '${PhoneNumber}' — не обновляем поле Phone number`)
       }
 
       rowsToUpdate.push(updatedRow)
       results.push(`📝 Prepared row ${rowId} update: ${JSON.stringify(updatedRow)}`)
     }
 
-    // 🔁 Повторная попытка по полю Requirements
-    for (const row of rowsToRetry) {
-      const rowId = row.id
-      const reqText = row.Requirements?.trim()
-      if (!reqText) continue
-
-      try {
-        gptCalls++
-        const gptRetryResp = await axios.post(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            max_tokens: 10,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Based on the text of a job description, determine the country this job is likely located in. Only return the country name in English. If you are unsure, respond with "Unknown".'
-              },
-              {
-                role: 'user',
-                content: `Determine the country for this job: '${reqText}'`
-              }
-            ]
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-
-        const retryCountry = gptRetryResp.data?.choices?.[0]?.message?.content?.trim()
-
-        if (retryCountry && retryCountry.toLowerCase() !== 'unknown') {
-          rowsToUpdate.push({ id: rowId, Country: retryCountry })
-          results.push(`🔁 Updated via Requirements row ${rowId} with country: ${retryCountry}`)
-        } else {
-          results.push(`⚠️ Still could not determine country for row ${rowId}`)
-        }
-      } catch (err) {
-        console.error(`❌ GPT retry error for row ${row.id}:`, err.response?.data || err.message)
-        results.push(`❌ GPT retry error for row ${row.id}: ${err.message}`)
-      }
-    }
-
-    // 2. Обновление строк
     if (rowsToUpdate.length > 0) {
       try {
         const updateResp = await axios.put(`${API_URL}/rows`, { rows: rowsToUpdate }, { headers: HEADERS })
@@ -197,7 +148,6 @@ async function updateCountries() {
       console.log(`⚠️ Обновлять нечего.`)
     }
 
-    // 3. Удаление строк
     if (rowsToDelete.length > 0) {
       try {
         const deleteUrl = `${API_URL}/rows/delete`

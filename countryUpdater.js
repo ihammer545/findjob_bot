@@ -32,9 +32,7 @@ async function updateCountries() {
     }, { headers: HEADERS })
 
     const rows = fetchResponse?.data?.rows
-    if (!Array.isArray(rows)) {
-      throw new Error('Botpress response format error: rows is not an array')
-    }
+    if (!Array.isArray(rows)) throw new Error('Botpress response format error: rows is not an array')
 
     console.log(`✅ Данные из Botpress получены: ${rows.length} строк(и)`)
 
@@ -43,10 +41,10 @@ async function updateCountries() {
 
     for (const row of rows) {
       const rowId = row.id
-      const city = row.City?.trim()
+      const cityField = row.City?.trim()
       const requirements = row.Requirements?.trim()
 
-      if (!city && !requirements) {
+      if (!cityField && !requirements) {
         rowsToDelete.push(rowId)
         results.push(`🗑️ Marked row ${rowId} for deletion (No City or Requirements)`)
         continue
@@ -55,12 +53,10 @@ async function updateCountries() {
       gptCalls++
       await sleep(DELAY)
 
-      let Country = ''
-      let Region = ''
-      let PhoneNumber = ''
+      let Country = '', Region = '', PhoneNumber = '', DetectedCity = ''
 
       try {
-        const gptUnifiedResp = await axios.post(
+        const gptResponse = await axios.post(
           'https://api.openai.com/v1/chat/completions',
           {
             model: 'gpt-4o-mini',
@@ -69,11 +65,24 @@ async function updateCountries() {
             messages: [
               {
                 role: 'system',
-                content: `You are a data extractor for job listings. Based on the input, extract the following:\n\n- Country: Determine the country of the job location using the city name if provided, or the full text if not. Answer only if you are confident, otherwise return \"null\".\n- Region: Determine the region/state/voivodeship/land/province the city belongs to, in English. If unsure, return \"null\".\n- Phone number: Extract the phone number from the text. Return only digits, no symbols or spaces. If missing, return \"null\".\n\nRespond strictly in this JSON format:\n{\n  \"Country\": \"...\",\n  \"Region\": \"...\",\n  \"Phone number\": \"...\"\n}`
+                content: `You are a data extractor for job listings. Based on the input, extract the following:
+
+- City: Determine the city of the job location based on the text. If unsure, return "null".
+- Country: Determine the country of the job location using the city name if provided, or the full text if not. Answer only if you are confident, otherwise return "null".
+- Region: Determine the region/state/voivodeship/land/province the city belongs to, in English. If unsure, return "null".
+- Phone number: Extract the phone number from the text. Return only digits, no symbols or spaces. If missing, return "null".
+
+Respond strictly in this JSON format:
+{
+  "City": "...",
+  "Country": "...",
+  "Region": "...",
+  "Phone number": "..."
+}`
               },
               {
                 role: 'user',
-                content: `City: '${city}'\nText: ${requirements}`
+                content: `Text: ${requirements}`
               }
             ]
           },
@@ -85,9 +94,9 @@ async function updateCountries() {
           }
         )
 
-        let parsedJson = {}
+        let parsed = {}
         try {
-          parsedJson = JSON.parse(gptUnifiedResp.data?.choices?.[0]?.message?.content)
+          parsed = JSON.parse(gptResponse.data?.choices?.[0]?.message?.content)
         } catch (parseErr) {
           console.error('❌ JSON parse error:', parseErr)
           results.push(`❌ JSON parse error in row ${rowId}`)
@@ -95,9 +104,10 @@ async function updateCountries() {
           continue
         }
 
-        Country = parsedJson?.Country?.trim()
-        Region = parsedJson?.Region?.trim()
-        PhoneNumber = parsedJson?.['Phone number']?.trim()
+        DetectedCity = parsed?.City?.trim()
+        Country = parsed?.Country?.trim()
+        Region = parsed?.Region?.trim()
+        PhoneNumber = parsed?.['Phone number']?.trim()
 
       } catch (gptErr) {
         console.error(`❌ GPT API error for row ${rowId}:`, gptErr.response?.data || gptErr.message)
@@ -117,13 +127,25 @@ async function updateCountries() {
       if (isValidField(Region)) {
         updatedRow.Region = Region
       } else {
-        results.push(`⚠️ GPT вернул сомнительное значение региона для row ${rowId}: '${Region}' — не обновляем поле Region`)
+        results.push(`⚠️ Не обновляем Region для row ${rowId} — значение сомнительно: '${Region}'`)
       }
 
       if (isValidField(PhoneNumber)) {
         updatedRow['Phone number'] = PhoneNumber
       } else {
-        results.push(`⚠️ GPT не смог извлечь номер телефона для row ${rowId}: '${PhoneNumber}' — не обновляем поле Phone number`)
+        results.push(`⚠️ Не обновляем PhoneNumber для row ${rowId} — значение сомнительно: '${PhoneNumber}'`)
+      }
+
+      if (isValidField(DetectedCity)) {
+        if (!cityField) {
+          updatedRow.City = DetectedCity
+          results.push(`✅ Записали City для row ${rowId} → '${DetectedCity}' (раньше было пусто)`)
+        } else if (cityField.toLowerCase() !== DetectedCity.toLowerCase()) {
+          updatedRow.City = DetectedCity
+          results.push(`🔁 Заменили City в row ${rowId}: было '${cityField}', стало '${DetectedCity}'`)
+        }
+      } else {
+        results.push(`⚠️ GPT не смог определить город для row ${rowId}`)
       }
 
       rowsToUpdate.push(updatedRow)
@@ -150,8 +172,7 @@ async function updateCountries() {
 
     if (rowsToDelete.length > 0) {
       try {
-        const deleteUrl = `${API_URL}/rows/delete`
-        await axios.post(deleteUrl, { ids: rowsToDelete }, { headers: HEADERS })
+        await axios.post(`${API_URL}/rows/delete`, { ids: rowsToDelete }, { headers: HEADERS })
         console.log(`🗑️ Удалено записей: ${rowsToDelete.length}`)
         results.push(`🗑️ Deleted ${rowsToDelete.length} rows.`)
       } catch (deleteErr) {
@@ -172,4 +193,4 @@ async function updateCountries() {
   }
 }
 
-export default updateCountries;
+export default updateCountries

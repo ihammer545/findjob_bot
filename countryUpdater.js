@@ -1,31 +1,9 @@
-// updateCountries.js
 import axios from 'axios'
 
 const MAX_RPM = 240
 const DELAY = Math.ceil(60000 / MAX_RPM)
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function isValidField(val) {
-  return val && !/null|unknown|not sure|don't know|invalid|n\/a/i.test(val)
-}
-
-async function fetchAllRows(apiUrl, headers) {
-  const allRows = []
-  let offset = 0
-  const limit = 1000
-
-  while (true) {
-    const response = await axios.post(`${apiUrl}/rows/find`, { limit, offset }, { headers })
-    const rows = response?.data?.rows
-    if (!Array.isArray(rows) || rows.length === 0) break
-    allRows.push(...rows)
-    offset += limit
-    await sleep(200)
-  }
-
-  return allRows
 }
 
 async function updateCountries() {
@@ -45,16 +23,41 @@ async function updateCountries() {
   const results = []
   let gptCalls = 0
   const rowsToRetry = []
-  let correctedCityCount = 0
+  let cityOverwrittenCount = 0
+
+  const isValidField = val => val && !/null|unknown|not sure|don't know|invalid|n\/a/i.test(val)
 
   try {
-    const rows = await fetchAllRows(API_URL, HEADERS)
-    console.log(`✅ Данные из Botpress получены: ${rows.length} строк(и)`)
+    let offset = 0;
+    const limit = 1000;
+    const allRows = [];
+
+    while (true) {
+      console.log(`📥 Запрос записей с offset ${offset}`);
+      const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
+        limit,
+        offset
+      }, { headers: HEADERS });
+
+      const rows = fetchResponse?.data?.rows
+      if (!Array.isArray(rows)) throw new Error('Botpress response format error: rows is not an array')
+      if (rows.length === 0) break;
+
+      console.log(`✅ Получено ${rows.length} строк на партии с offset ${offset}`);
+      allRows.push(...rows);
+      offset += limit;
+    }
+
+    console.log(`📦 Всего загружено строк: ${allRows.length}`);
 
     const rowsToUpdate = []
     const rowsToDelete = []
 
-    for (const row of rows) {
+    let index = 0;
+    for (const row of allRows) {
+      index++;
+      console.log(`➡️ Обработка строки ${index} из ${allRows.length} (ID: ${row.id})`);
+
       const rowId = row.id
       const cityField = row.City?.trim()
       const requirements = row.Requirements?.trim()
@@ -137,40 +140,43 @@ Respond strictly in this JSON format:
         continue
       }
 
-      const updatedRow = { id: rowId }
-      let changed = false
+      const updatedRow = { id: rowId, Country }
+      let changed = false;
 
-      if (isValidField(Region) && Region !== row.Region) {
+      if (isValidField(Region)) {
         updatedRow.Region = Region
-        changed = true
+        changed = true;
+      } else {
+        results.push(`⚠️ Не обновляем Region для row ${rowId} — значение сомнительно: '${Region}'`)
       }
 
-      if (isValidField(PhoneNumber) && PhoneNumber !== row['Phone number']) {
+      if (isValidField(PhoneNumber)) {
         updatedRow['Phone number'] = PhoneNumber
-        changed = true
+        changed = true;
+      } else {
+        results.push(`⚠️ Не обновляем PhoneNumber для row ${rowId} — значение сомнительно: '${PhoneNumber}'`)
       }
 
       if (isValidField(DetectedCity)) {
         if (!cityField) {
           updatedRow.City = DetectedCity
-          changed = true
           results.push(`✅ Записали City для row ${rowId} → '${DetectedCity}' (раньше было пусто)`)
+          changed = true;
         } else if (cityField.toLowerCase() !== DetectedCity.toLowerCase()) {
           updatedRow.City = DetectedCity
-          changed = true
-          correctedCityCount++
           results.push(`🔁 Заменили City в row ${rowId}: было '${cityField}', стало '${DetectedCity}'`)
+          cityOverwrittenCount++;
+          changed = true;
         }
-      }
-
-      if (Country !== row.Country) {
-        updatedRow.Country = Country
-        changed = true
+      } else {
+        results.push(`⚠️ GPT не смог определить город для row ${rowId}`)
       }
 
       if (changed) {
         rowsToUpdate.push(updatedRow)
         results.push(`📝 Prepared row ${rowId} update: ${JSON.stringify(updatedRow)}`)
+      } else {
+        results.push(`ℹ️ Никаких изменений для row ${rowId}`)
       }
     }
 
@@ -178,7 +184,6 @@ Respond strictly in this JSON format:
       try {
         const updateResp = await axios.put(`${API_URL}/rows`, { rows: rowsToUpdate }, { headers: HEADERS })
         console.log(`✅ Записей обновлено: ${rowsToUpdate.length}`)
-        console.log(`🏙️ Город был перезаписан как некорректный в ${correctedCityCount} случаях`)
         results.push(`✅ Updated ${rowsToUpdate.length} rows.`)
 
         if (updateResp.data?.errors?.length) {
@@ -207,7 +212,9 @@ Respond strictly in this JSON format:
     }
 
     console.log(`📤 Всего GPT-вызовов: ${gptCalls}`)
+    console.log(`🏙️ Город был перезаписан как некорректный в ${cityOverwrittenCount} случаях`)
     return results
+
   } catch (err) {
     console.error('❌ Unexpected error in updateCountries:', err)
     results.push(`❌ Unexpected error: ${err.message}`)

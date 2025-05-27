@@ -1,89 +1,22 @@
 import axios from 'axios'
 
-const MAX_RPM = 240
+const MAX_RPM = 400
 const DELAY = Math.ceil(60000 / MAX_RPM)
+const BATCH_SIZE = 50
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function updateCountries() {
-  const API_URL = process.env.BOTPRESS_API_URL
-  const BOT_ID = process.env.BOTPRESS_BOT_ID
-  const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
-  const BP_TOKEN = process.env.BOTPRESS_API_TOKEN
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-
-  const HEADERS = {
-    Authorization: `Bearer ${BP_TOKEN}`,
-    'x-bot-id': BOT_ID,
-    'x-workspace-id': WORKSPACE_ID,
-    'Content-Type': 'application/json'
-  }
-
-  const results = []
-  let gptCalls = 0
-  const rowsToRetry = []
-  let cityOverwrittenCount = 0
-
-  const isValidField = val => val && !/null|unknown|not sure|don't know|invalid|n\/a/i.test(val)
-
-  try {
-    let offset = 0;
-    const limit = 1000;
-    const allRows = [];
-
-    while (true) {
-      console.log(`📥 Запрос записей с offset ${offset}`);
-      const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
-        limit,
-        offset
-      }, { headers: HEADERS });
-
-      const rows = fetchResponse?.data?.rows
-      if (!Array.isArray(rows)) throw new Error('Botpress response format error: rows is not an array')
-      if (rows.length === 0) break;
-
-      console.log(`✅ Получено ${rows.length} строк на партии с offset ${offset}`);
-      allRows.push(...rows);
-      offset += limit;
-    }
-
-    console.log(`📦 Всего загружено строк: ${allRows.length}`);
-
-    const rowsToUpdate = []
-    const rowsToDelete = []
-
-    let index = 0;
-    for (const row of allRows) {
-      index++;
-      console.log(`➡️ Обработка строки ${index} из ${allRows.length} (ID: ${row.id})`);
-
-      const rowId = row.id
-      const cityField = row.City?.trim()
-      const requirements = row.Requirements?.trim()
-
-      if (!cityField && !requirements) {
-        rowsToDelete.push(rowId)
-        results.push(`🗑️ Marked row ${rowId} for deletion (No City or Requirements)`)
-        continue
-      }
-
-      gptCalls++
-      await sleep(DELAY)
-
-      let Country = '', Region = '', PhoneNumber = '', DetectedCity = ''
-
-      try {
-        const gptResponse = await axios.post(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            max_tokens: 150,
-            messages: [
-              {
-                role: 'system',
-                content: `You are a data extractor for job listings. Based on the input, extract the following:
+async function callGPTWithRetry(rowId, requirements) {
+  const payload = {
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    max_tokens: 150,
+    messages: [
+      {
+        role: 'system',
+        content: `You are a data extractor for job listings. Based on the input, extract the following:
 
 - City: Determine the city of the job location based on the text. If unsure, return "null".
 - Country: Determine the country of the job location using the city name if provided, or the full text if not. Answer only if you are confident, otherwise return "null".
@@ -97,42 +30,113 @@ Respond strictly in this JSON format:
   "Region": "...",
   "Phone number": "..."
 }`
-              },
-              {
-                role: 'user',
-                content: `Text: ${requirements}`
-              }
-            ]
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
+      },
+      {
+        role: 'user',
+        content: `Text: ${requirements}`
+      }
+    ]
+  }
 
-        let parsed = {}
-        try {
-          parsed = JSON.parse(gptResponse.data?.choices?.[0]?.message?.content)
-        } catch (parseErr) {
-          console.error('❌ JSON parse error:', parseErr)
-          results.push(`❌ JSON parse error in row ${rowId}`)
-          rowsToRetry.push(row)
-          continue
-        }
+  const config = {
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    timeout: 15000
+  }
 
-        DetectedCity = parsed?.City?.trim()
-        Country = parsed?.Country?.trim()
-        Region = parsed?.Region?.trim()
-        PhoneNumber = parsed?.['Phone number']?.trim()
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`🤖 GPT запрос (попытка ${attempt}) для row ${rowId}`)
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', payload, config)
+      return response
+    } catch (err) {
+      if (attempt === 2) throw err
+      console.warn(`⚠️ GPT попытка ${attempt} не удалась для row ${rowId}, повтор...`)
+    }
+  }
+}
 
+async function updateCountries() {
+  const API_URL = process.env.BOTPRESS_API_URL
+  const BOT_ID = process.env.BOTPRESS_BOT_ID
+  const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
+  const BP_TOKEN = process.env.BOTPRESS_API_TOKEN
+
+  const HEADERS = {
+    Authorization: `Bearer ${BP_TOKEN}`,
+    'x-bot-id': BOT_ID,
+    'x-workspace-id': WORKSPACE_ID,
+    'Content-Type': 'application/json'
+  }
+
+  const results = []
+  let gptCalls = 0
+  const rowsToRetry = []
+
+  const isValidField = val => val && !/null|unknown|not sure|don't know|invalid|n\/a/i.test(val)
+
+  try {
+    const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
+      limit: 1000
+    }, { headers: HEADERS })
+
+    const rows = fetchResponse?.data?.rows
+    if (!Array.isArray(rows)) throw new Error('Botpress response format error: rows is not an array')
+
+    console.log(`✅ Данные из Botpress получены: ${rows.length} строк(и)`)
+
+    const rowsToDelete = []
+    let batchRows = []
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const rowId = row.id
+      const cityField = row.City?.trim()
+      const requirements = row.Requirements?.trim()
+
+      console.log(`➡️ Обработка строки ${i + 1} из ${rows.length} (ID: ${rowId})`)
+
+      if (!cityField && !requirements) {
+        rowsToDelete.push(rowId)
+        results.push(`🗑️ Marked row ${rowId} for deletion (No City or Requirements)`)
+        continue
+      }
+
+      gptCalls++
+      await sleep(DELAY)
+
+      let Country = '', Region = '', PhoneNumber = '', DetectedCity = ''
+      let gptResponse
+
+      try {
+        gptResponse = await callGPTWithRetry(rowId, requirements)
       } catch (gptErr) {
-        console.error(`❌ GPT API error for row ${rowId}:`, gptErr.response?.data || gptErr.message)
-        results.push(`❌ GPT error for row ${rowId}: ${gptErr.message}`)
+        const errorMsg = gptErr.code === 'ECONNABORTED'
+          ? `⏱️ Таймаут GPT для row ${rowId}`
+          : `❌ GPT error for row ${rowId}: ${gptErr.message}`
+
+        console.error(errorMsg)
+        results.push(errorMsg)
         rowsToRetry.push(row)
         continue
       }
+
+      let parsed = {}
+      try {
+        parsed = JSON.parse(gptResponse.data?.choices?.[0]?.message?.content)
+      } catch (parseErr) {
+        console.error('❌ JSON parse error:', parseErr)
+        results.push(`❌ JSON parse error in row ${rowId}`)
+        rowsToRetry.push(row)
+        continue
+      }
+
+      DetectedCity = parsed?.City?.trim()
+      Country = parsed?.Country?.trim()
+      Region = parsed?.Region?.trim()
+      PhoneNumber = parsed?.['Phone number']?.trim()
 
       if (!isValidField(Country)) {
         results.push(`❌ Could not determine country for row ${rowId}`)
@@ -141,18 +145,15 @@ Respond strictly in this JSON format:
       }
 
       const updatedRow = { id: rowId, Country }
-      let changed = false;
 
       if (isValidField(Region)) {
         updatedRow.Region = Region
-        changed = true;
       } else {
         results.push(`⚠️ Не обновляем Region для row ${rowId} — значение сомнительно: '${Region}'`)
       }
 
       if (isValidField(PhoneNumber)) {
         updatedRow['Phone number'] = PhoneNumber
-        changed = true;
       } else {
         results.push(`⚠️ Не обновляем PhoneNumber для row ${rowId} — значение сомнительно: '${PhoneNumber}'`)
       }
@@ -161,41 +162,38 @@ Respond strictly in this JSON format:
         if (!cityField) {
           updatedRow.City = DetectedCity
           results.push(`✅ Записали City для row ${rowId} → '${DetectedCity}' (раньше было пусто)`)
-          changed = true;
         } else if (cityField.toLowerCase() !== DetectedCity.toLowerCase()) {
           updatedRow.City = DetectedCity
           results.push(`🔁 Заменили City в row ${rowId}: было '${cityField}', стало '${DetectedCity}'`)
-          cityOverwrittenCount++;
-          changed = true;
         }
       } else {
         results.push(`⚠️ GPT не смог определить город для row ${rowId}`)
       }
 
-      if (changed) {
-        rowsToUpdate.push(updatedRow)
-        results.push(`📝 Prepared row ${rowId} update: ${JSON.stringify(updatedRow)}`)
-      } else {
-        results.push(`ℹ️ Никаких изменений для row ${rowId}`)
+      batchRows.push(updatedRow)
+
+      // ⏱ Отправка каждые BATCH_SIZE строк
+      if (batchRows.length === BATCH_SIZE) {
+        try {
+          await axios.put(`${API_URL}/rows`, { rows: batchRows }, { headers: HEADERS })
+          console.log(`✅ Обновлено строк в батче: ${BATCH_SIZE}`)
+        } catch (err) {
+          console.error(`❌ Ошибка при обновлении батча:`, err.response?.data || err.message)
+          results.push(`❌ Ошибка батча: ${err.message}`)
+        }
+        batchRows = []
       }
     }
 
-    if (rowsToUpdate.length > 0) {
+    // Отправляем остаток строк
+    if (batchRows.length > 0) {
       try {
-        const updateResp = await axios.put(`${API_URL}/rows`, { rows: rowsToUpdate }, { headers: HEADERS })
-        console.log(`✅ Записей обновлено: ${rowsToUpdate.length}`)
-        results.push(`✅ Updated ${rowsToUpdate.length} rows.`)
-
-        if (updateResp.data?.errors?.length) {
-          console.warn(`⚠️ Ошибки при обновлении:`, updateResp.data.errors)
-          results.push(`⚠️ Ошибки при обновлении:\n${JSON.stringify(updateResp.data.errors)}`)
-        }
-      } catch (updateErr) {
-        console.error(`❌ Ошибка при обновлении строк:`, updateErr.response?.data || updateErr.message)
-        results.push(`❌ Update error: ${updateErr.message}`)
+        await axios.put(`${API_URL}/rows`, { rows: batchRows }, { headers: HEADERS })
+        console.log(`✅ Обновлены остаточные строки: ${batchRows.length}`)
+      } catch (err) {
+        console.error(`❌ Ошибка при обновлении остатка:`, err.response?.data || err.message)
+        results.push(`❌ Ошибка остатка: ${err.message}`)
       }
-    } else {
-      console.log(`⚠️ Обновлять нечего.`)
     }
 
     if (rowsToDelete.length > 0) {
@@ -212,7 +210,6 @@ Respond strictly in this JSON format:
     }
 
     console.log(`📤 Всего GPT-вызовов: ${gptCalls}`)
-    console.log(`🏙️ Город был перезаписан как некорректный в ${cityOverwrittenCount} случаях`)
     return results
 
   } catch (err) {

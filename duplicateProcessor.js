@@ -1,12 +1,14 @@
 // duplicateProcessor.js
 import fetch from 'node-fetch';
 
-// Основная функция
-export async function processDuplicatesAndSendWebhook(webhookUrl) {
-  let gptRequests = 0;
-  console.time('⏱️ Обработка заняла');
 
-  try {
+  
+    async function fetchAllTickets() {
+  const allRows = [];
+  let offset = 0;
+  const limit = 1000;
+
+  while (true) {
     const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
       method: "POST",
       headers: {
@@ -14,17 +16,35 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
         "x-bot-id": process.env.BOTPRESS_BOT_ID,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ limit: 1000 })
+      body: JSON.stringify({ limit, offset })
     });
 
     if (!response.ok) {
       const text = await response.text();
       console.error('❌ Ошибка от Botpress:', text);
-      return;
+      break;
     }
 
     const json = await response.json();
-    const tickets = json.rows || [];
+    const rows = json.rows || [];
+    if (rows.length === 0) break;
+
+    allRows.push(...rows);
+    offset += limit;
+ // Предохранитель от rate limit
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  return allRows;
+}
+
+// Основная функция
+export async function processDuplicatesAndSendWebhook(webhookUrl) {
+  let gptRequests = 0;
+  console.time('⏱️ Обработка заняла');
+
+  try {
+    const tickets = await fetchAllTickets();
 
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);
     const toDelete = new Set();
@@ -40,8 +60,8 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
           if (seenPairs.has(key)) continue;
           seenPairs.add(key);
 
-          const text1 = (t1.Requirements || '').slice(0, 400);
-          const text2 = (t2.Requirements || '').slice(0, 400);
+          const text1 = (t1.Requirements || '').slice(0, 500);
+          const text2 = (t2.Requirements || '').slice(0, 500);
 
           const jaccard = jaccardSimilarity(text1, text2);
           if (jaccard >= 0.08) {
@@ -85,6 +105,7 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
   console.timeEnd('⏱️ Обработка заняла');
   console.log(`📊 Количество обращений к GPT: ${gptRequests}`);
 }
+
 
 // Утилита группировки
 function groupBy(arr, fn) {

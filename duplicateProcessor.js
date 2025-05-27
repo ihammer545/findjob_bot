@@ -61,7 +61,7 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
     }
 
     console.log('📚 [3] Группировка по категориям и подкатегориям...');
-    const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);
+    const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}|||${t["City"]}`);
     const toDelete = new Set();
 
     for (const [groupKey, groupTickets] of Object.entries(groups)) {

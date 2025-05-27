@@ -64,6 +64,19 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}|||${t["City"]}`);
     const toDelete = new Set();
 
+
+//подсчитываем количество сравнений
+let totalComparisons = 0;
+
+for (const groupTickets of Object.values(groups)) {
+  const n = groupTickets.length;
+  if (n >= 2) {
+    totalComparisons += (n * (n - 1)) / 2;
+  }
+}
+
+console.log(`📈 Ожидается примерно ${totalComparisons.toLocaleString()} сравнений`);
+
     for (const [groupKey, groupTickets] of Object.entries(groups)) {
       console.log(`🔍 [4] Обрабатываем группу: ${groupKey} (${groupTickets.length} записей)`);
 

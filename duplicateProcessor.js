@@ -67,6 +67,12 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
     for (const [groupKey, groupTickets] of Object.entries(groups)) {
       console.log(`🔍 [4] Обрабатываем группу: ${groupKey} (${groupTickets.length} записей)`);
 
+        if (groupTickets.length < 2) {
+    console.log(`ℹ️ Пропускаем группу "${groupKey}" — слишком мало записей (${groupTickets.length})`);
+    continue;
+  }
+
+
       const seenPairs = new Set();
 
       for (let i = 0; i < groupTickets.length; i++) {

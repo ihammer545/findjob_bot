@@ -1,44 +1,53 @@
 // duplicateProcessor.js
 import fetch from 'node-fetch';
 
-
-  
-    async function fetchAllTickets() {
+async function fetchAllTickets() {
   const allRows = [];
   let offset = 0;
   const limit = 1000;
 
-  while (true) {
-    const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
-      method: "POST",
-      headers: {
-        "Authorization": `bearer ${process.env.BOTPRESS_API_TOKEN}`,
-        "x-bot-id": process.env.BOTPRESS_BOT_ID,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ limit, offset })
-    });
+  console.log('🔁 [1] Начинаем загрузку всех тикетов из Botpress...');
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('❌ Ошибка от Botpress:', text);
-      break;
+  try {
+    while (true) {
+      console.log(`📦 [1.${offset / limit + 1}] Загружаем партию offset=${offset}...`);
+
+      const response = await fetch("https://api.botpress.cloud/v1/tables/TicketsTable/rows/find", {
+        method: "POST",
+        headers: {
+          "Authorization": `bearer ${process.env.BOTPRESS_API_TOKEN}`,
+          "x-bot-id": process.env.BOTPRESS_BOT_ID,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ limit, offset })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('❌ Ошибка от Botpress:', text);
+        break;
+      }
+
+      const json = await response.json();
+      const rows = json.rows || [];
+
+      if (rows.length === 0) {
+        console.log('✅ [1.X] Все записи загружены.');
+        break;
+      }
+
+      allRows.push(...rows);
+      offset += limit;
+      await new Promise(r => setTimeout(r, 200)); // Предохранитель от rate limit
     }
-
-    const json = await response.json();
-    const rows = json.rows || [];
-    if (rows.length === 0) break;
-
-    allRows.push(...rows);
-    offset += limit;
- // Предохранитель от rate limit
-    await new Promise(r => setTimeout(r, 200));
+  } catch (err) {
+    console.error('❌ Ошибка при загрузке из Botpress:', err);
   }
 
+  console.log(`📊 [2] Всего загружено ${allRows.length} записей`);
   return allRows;
 }
 
-// Основная функция
 export async function processDuplicatesAndSendWebhook(webhookUrl) {
   let gptRequests = 0;
   console.time('⏱️ Обработка заняла');
@@ -46,10 +55,18 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
   try {
     const tickets = await fetchAllTickets();
 
+    if (!tickets.length) {
+      console.log('⚠️ [2.1] Нет данных для обработки.');
+      return;
+    }
+
+    console.log('📚 [3] Группировка по категориям и подкатегориям...');
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}`);
     const toDelete = new Set();
 
-    for (const groupTickets of Object.values(groups)) {
+    for (const [groupKey, groupTickets] of Object.entries(groups)) {
+      console.log(`🔍 [4] Обрабатываем группу: ${groupKey} (${groupTickets.length} записей)`);
+
       const seenPairs = new Set();
 
       for (let i = 0; i < groupTickets.length; i++) {
@@ -64,13 +81,16 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
           const text2 = (t2.Requirements || '').slice(0, 500);
 
           const jaccard = jaccardSimilarity(text1, text2);
-          if (jaccard >= 0.08) {
-            const lev = levenshteinSimilarity(text1, text2);
-            if (lev >= 0.55) {
-              gptRequests++;
-              const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
-              if (!isDuplicate) continue;
+          const lev = levenshteinSimilarity(text1, text2);
 
+          console.log(`🔗 [5] Сравнение ${t1.id} vs ${t2.id} — Jaccard: ${jaccard.toFixed(3)}, Levenshtein: ${lev.toFixed(3)}`);
+
+          if (jaccard >= 0.08 && lev >= 0.55) {
+            console.log(`🤖 [6] GPT проверка дубликата: ${t1.id} vs ${t2.id}`);
+            gptRequests++;
+            const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
+
+            if (isDuplicate) {
               let toRemove = t2;
               if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
                 toRemove = t1;
@@ -78,6 +98,9 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
                 toRemove = t2;
               }
               toDelete.add(toRemove.id);
+              console.log(`🗑️ [7] Добавлено к удалению: ${toRemove.id}`);
+            } else {
+              console.log(`✅ [7] GPT: НЕ дубликат`);
             }
           }
         }
@@ -91,21 +114,21 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
       timestamp: new Date().toISOString()
     };
 
+    console.log(`📤 [8] Отправка результата на вебхук: найдено дубликатов ${toDelete.size}`);
     const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    console.log('📤 Отправлено на вебхук:', webhookResponse.status);
+    console.log(`📬 [9] Вебхук ответил со статусом: ${webhookResponse.status}`);
   } catch (err) {
-    console.error('❌ Ошибка в фоновом процессе:', err);
+    console.error('❌ Ошибка в основном процессе:', err);
   }
 
   console.timeEnd('⏱️ Обработка заняла');
-  console.log(`📊 Количество обращений к GPT: ${gptRequests}`);
+  console.log(`📊 Обращений к GPT: ${gptRequests}`);
 }
-
 
 // Утилита группировки
 function groupBy(arr, fn) {
@@ -175,7 +198,13 @@ async function isLikelyDuplicateGPT(textA, textB) {
     });
 
     const result = await response.json();
-    const answer = result.choices?.[0]?.message?.content?.trim().toLowerCase();
+
+    if (!result.choices || !result.choices[0]?.message?.content) {
+      console.warn('⚠️ Ответ от GPT некорректен или пуст:', JSON.stringify(result));
+      return false;
+    }
+
+    const answer = result.choices[0].message.content.trim().toLowerCase();
     return answer === 'yes';
   } catch (err) {
     console.error('❌ Ошибка при запросе к OpenAI:', err);

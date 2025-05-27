@@ -74,29 +74,41 @@ async function updateCountries() {
   const results = []
   let gptCalls = 0
   const rowsToRetry = []
+  let replacedCityCount = 0
+  let filledEmptyCityCount = 0
+  let unknownCityCount = 0
 
   const isValidField = val => val && !/null|unknown|not sure|don't know|invalid|n\/a/i.test(val)
 
   try {
-    const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
-      limit: 1000
-    }, { headers: HEADERS })
+    let allRows = []
+    const pageSize = 1000
+    let page = 0
 
-    const rows = fetchResponse?.data?.rows
-    if (!Array.isArray(rows)) throw new Error('Botpress response format error: rows is not an array')
+    while (true) {
+      const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
+        limit: pageSize,
+        offset: page * pageSize
+      }, { headers: HEADERS })
 
-    console.log(`✅ Данные из Botpress получены: ${rows.length} строк(и)`)
+      const rows = fetchResponse?.data?.rows
+      if (!Array.isArray(rows) || rows.length === 0) break
+
+      allRows = allRows.concat(rows)
+      console.log(`📥 Загружено ${rows.length} строк (offset ${page * pageSize})`)
+      page++
+    }
 
     const rowsToDelete = []
     let batchRows = []
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
+    for (let i = 0; i < allRows.length; i++) {
+      const row = allRows[i]
       const rowId = row.id
       const cityField = row.City?.trim()
       const requirements = row.Requirements?.trim()
 
-      console.log(`➡️ Обработка строки ${i + 1} из ${rows.length} (ID: ${rowId})`)
+      console.log(`➡️ Обработка строки ${i + 1} из ${allRows.length} (ID: ${rowId})`)
 
       if (!cityField && !requirements) {
         rowsToDelete.push(rowId)
@@ -161,20 +173,23 @@ async function updateCountries() {
       if (isValidField(DetectedCity)) {
         if (!cityField) {
           updatedRow.City = DetectedCity
+          filledEmptyCityCount++
           results.push(`✅ Записали City для row ${rowId} → '${DetectedCity}' (раньше было пусто)`)
         } else if (cityField.toLowerCase() !== DetectedCity.toLowerCase()) {
           updatedRow.City = DetectedCity
+          replacedCityCount++
           results.push(`🔁 Заменили City в row ${rowId}: было '${cityField}', стало '${DetectedCity}'`)
         }
       } else {
+        unknownCityCount++
         results.push(`⚠️ GPT не смог определить город для row ${rowId}`)
       }
 
       batchRows.push(updatedRow)
 
-      // ⏱ Отправка каждые BATCH_SIZE строк
       if (batchRows.length === BATCH_SIZE) {
         try {
+          console.log(`⬆️ Отправка батча в Botpress (${BATCH_SIZE} строк)...`)
           await axios.put(`${API_URL}/rows`, { rows: batchRows }, { headers: HEADERS })
           console.log(`✅ Обновлено строк в батче: ${BATCH_SIZE}`)
         } catch (err) {
@@ -185,9 +200,9 @@ async function updateCountries() {
       }
     }
 
-    // Отправляем остаток строк
     if (batchRows.length > 0) {
       try {
+        console.log(`⬆️ Отправка последнего батча в Botpress (${batchRows.length} строк)...`)
         await axios.put(`${API_URL}/rows`, { rows: batchRows }, { headers: HEADERS })
         console.log(`✅ Обновлены остаточные строки: ${batchRows.length}`)
       } catch (err) {
@@ -210,8 +225,13 @@ async function updateCountries() {
     }
 
     console.log(`📤 Всего GPT-вызовов: ${gptCalls}`)
-    return results
+    console.log(`📊 Статистика по городам:`)
+    console.log(`   🔁 Заменено городов: ${replacedCityCount}`)
+    console.log(`   🆕 Заполнено пустых: ${filledEmptyCityCount}`)
+    console.log(`   ❓ Не удалось определить: ${unknownCityCount}`)
+    console.log(`   🔁 В rowsToRetry: ${rowsToRetry.length}`)
 
+    return results
   } catch (err) {
     console.error('❌ Unexpected error in updateCountries:', err)
     results.push(`❌ Unexpected error: ${err.message}`)

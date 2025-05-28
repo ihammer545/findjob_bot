@@ -56,8 +56,23 @@ Respond strictly in this JSON format:
       })
 
       clearTimeout(timeout)
+
+      //логирование ошибок gpt
       const data = await response.json()
-      return data
+
+if (!response.ok) {
+  console.error(`❌ GPT HTTP error ${response.status} for row ${rowId}: ${JSON.stringify(data)}`)
+  throw new Error(`GPT error ${response.status}`)
+}
+
+if (!data.choices || !Array.isArray(data.choices)) {
+  console.error(`❌ GPT ответ без choices в row ${rowId}: ${JSON.stringify(data)}`)
+  throw new Error(`Missing choices in GPT response`)
+}
+
+return data
+
+      
     } catch (err) {
       clearTimeout(timeout)
       if (err.name === 'AbortError') {
@@ -106,10 +121,11 @@ async function updateCountries() {
       const rows = fetchResponse?.data?.rows || []
       if (rows.length === 0) break
 
-      // 🧪 Ограничиваем только первую партию до 60 строк
+      /* 🧪 Ограничиваем только первую партию до 60 строк
       if (page === 0) {
         rows.length = Math.min(rows.length, 60)
       }
+      */
 
       for (let row of rows) {
         const rowId = row.id

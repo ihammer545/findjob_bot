@@ -30,6 +30,13 @@ Respond strictly in this JSON format:
   "Country": "...",
   "Region": "...",
   "Phone number": "..."
+}
+Return only valid JSON starting with '{' and ending with '}', with no explanations, preambles, or comments. If unsure, return:
+{
+  "City": "null",
+  "Country": "null",
+  "Region": "null",
+  "Phone number": "null"
 }`
       },
       {
@@ -104,11 +111,6 @@ async function updateCountries() {
       const rows = fetchResponse?.data?.rows || []
       if (rows.length === 0) break
 
-      // /* Ограничение на первые 60 строк для теста */
-      // if (page === 0) {
-      //   rows.length = Math.min(rows.length, 60)
-      // }
-
       for (let row of rows) {
         const rowId = row.id
         lastRowId = rowId
@@ -134,18 +136,26 @@ async function updateCountries() {
           continue
         }
 
-        let parsed
-        const content = gptData.choices?.[0]?.message?.content?.trim()
-        if (!content?.startsWith('{')) {
-          console.error(`❌ Invalid JSON from GPT in row ${rowId}`)
+        let content = gptData.choices?.[0]?.message?.content?.trim()
+        if (!content) {
+          console.error(`❌ Пустой ответ от GPT в row ${rowId}`)
           failedRows.push(rowId)
           continue
         }
 
+        content = content.replace(/^[^{]+/, '').trim()
+
+        if (!content.startsWith('{')) {
+          console.error(`❌ Invalid JSON from GPT in row ${rowId}:`, content)
+          failedRows.push(rowId)
+          continue
+        }
+
+        let parsed
         try {
           parsed = JSON.parse(content)
         } catch (e) {
-          console.error(`❌ JSON parse error for row ${rowId}`)
+          console.error(`❌ JSON parse error for row ${rowId}:`, content)
           failedRows.push(rowId)
           continue
         }

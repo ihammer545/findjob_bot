@@ -1,5 +1,3 @@
-// Обновлённый updateCountries с устранением всех потенциальных проблем
-
 import axios from 'axios'
 
 const MAX_RPM = 200
@@ -108,6 +106,11 @@ async function updateCountries() {
       const rows = fetchResponse?.data?.rows || []
       if (rows.length === 0) break
 
+      // 🧪 Ограничиваем только первую партию до 60 строк
+      if (page === 0) {
+        rows.length = Math.min(rows.length, 60)
+      }
+
       for (let row of rows) {
         const rowId = row.id
         lastRowId = rowId
@@ -163,7 +166,7 @@ async function updateCountries() {
         if (isValidField(PhoneNumber)) updatedRow['Phone number'] = PhoneNumber
 
         if (isValidField(DetectedCity) &&
-          (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())) {
+            (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())) {
           updatedRow.City = DetectedCity
         }
 
@@ -182,7 +185,8 @@ async function updateCountries() {
         }
       }
 
-      page++
+      // 🧪 Прекращаем выполнение после первой страницы
+      break
     }
 
     if (batchRows.length > 0) {
@@ -201,6 +205,7 @@ async function updateCountries() {
     }
 
     console.log(`🏁 Обработка завершена. Всего строк: ${processed}`)
+    return []
   } catch (err) {
     console.error('❌ Unexpected error in updateCountries:', err)
   }

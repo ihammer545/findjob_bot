@@ -91,7 +91,7 @@ async function updateCountries() {
   let batchSinceFlush = 0
   const failedRows = []
 
-  setInterval(() => {
+  const watchdog = setInterval(() => {
     console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)
   }, 30000)
 
@@ -204,9 +204,11 @@ async function updateCountries() {
       console.warn(failedRows)
     }
 
+    clearInterval(watchdog) // 🧹 остановка таймера
     console.log(`🏁 Обработка завершена. Всего строк: ${processed}`)
     return []
   } catch (err) {
+    clearInterval(watchdog)
     console.error('❌ Unexpected error in updateCountries:', err)
   }
 }

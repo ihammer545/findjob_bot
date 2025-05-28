@@ -3,7 +3,7 @@ import axios from 'axios'
 const MAX_RPM = 200
 const DELAY = Math.ceil(60000 / MAX_RPM)
 const BATCH_SIZE = 50
-const FORCE_FLUSH_INTERVAL = 300 // строк без сброса батча
+const FORCE_FLUSH_INTERVAL = 300
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -56,23 +56,8 @@ Respond strictly in this JSON format:
       })
 
       clearTimeout(timeout)
-
-      //логирование ошибок gpt
       const data = await response.json()
-
-if (!response.ok) {
-  console.error(`❌ GPT HTTP error ${response.status} for row ${rowId}: ${JSON.stringify(data)}`)
-  throw new Error(`GPT error ${response.status}`)
-}
-
-if (!data.choices || !Array.isArray(data.choices)) {
-  console.error(`❌ GPT ответ без choices в row ${rowId}: ${JSON.stringify(data)}`)
-  throw new Error(`Missing choices in GPT response`)
-}
-
-return data
-
-      
+      return data
     } catch (err) {
       clearTimeout(timeout)
       if (err.name === 'AbortError') {
@@ -105,10 +90,8 @@ async function updateCountries() {
   let lastRowId = null
   let batchSinceFlush = 0
   const failedRows = []
-
-  const watchdog = setInterval(() => {
-    console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)
-  }, 30000)
+  let cityOverwrittenCount = 0
+  let gptCalls = 0
 
   try {
     let page = 0
@@ -121,11 +104,10 @@ async function updateCountries() {
       const rows = fetchResponse?.data?.rows || []
       if (rows.length === 0) break
 
-      /* 🧪 Ограничиваем только первую партию до 60 строк
-      if (page === 0) {
-        rows.length = Math.min(rows.length, 60)
-      }
-      */
+      // /* Ограничение на первые 60 строк для теста */
+      // if (page === 0) {
+      //   rows.length = Math.min(rows.length, 60)
+      // }
 
       for (let row of rows) {
         const rowId = row.id
@@ -145,6 +127,7 @@ async function updateCountries() {
         let gptData
         try {
           gptData = await callGPTWithRetry(rowId, requirements)
+          gptCalls++
         } catch (err) {
           console.error(`❌ GPT error for row ${rowId}: ${err.message}`)
           failedRows.push(rowId)
@@ -181,9 +164,13 @@ async function updateCountries() {
         if (isValidField(Region)) updatedRow.Region = Region
         if (isValidField(PhoneNumber)) updatedRow['Phone number'] = PhoneNumber
 
-        if (isValidField(DetectedCity) &&
-            (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())) {
+        if (
+          isValidField(DetectedCity) &&
+          (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())
+        ) {
+          console.log(`🔄 Перезаписываем город для row ${rowId}: "${cityField}" → "${DetectedCity}"`)
           updatedRow.City = DetectedCity
+          cityOverwrittenCount++
         }
 
         batchRows.push(updatedRow)
@@ -200,9 +187,7 @@ async function updateCountries() {
           batchSinceFlush = 0
         }
       }
-
-      // 🧪 Прекращаем выполнение после первой страницы
-      break
+      page++
     }
 
     if (batchRows.length > 0) {
@@ -220,11 +205,11 @@ async function updateCountries() {
       console.warn(failedRows)
     }
 
-    clearInterval(watchdog) // 🧹 остановка таймера
     console.log(`🏁 Обработка завершена. Всего строк: ${processed}`)
+    console.log(`📤 Всего GPT-вызовов: ${gptCalls}`)
+    console.log(`🏙️ Город был перезаписан как некорректный в ${cityOverwrittenCount} случаях`)
     return []
   } catch (err) {
-    clearInterval(watchdog)
     console.error('❌ Unexpected error in updateCountries:', err)
   }
 }

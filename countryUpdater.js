@@ -108,8 +108,11 @@ async function updateCountries(targetDate) {
   offset: page * pageSize,
   where: {
     column: 'Publish Date',
-    operator: 'eq',
-    value: dateFilter
+    operator: 'between',
+    value: [
+      `${dateFilter}T00:00:00.000Z`,
+      `${dateFilter}T23:59:59.999Z`
+    ]
   }
 }, { headers: HEADERS })
 

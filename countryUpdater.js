@@ -102,11 +102,17 @@ async function updateCountries(targetDate) {
   try {
     let page = 0
     while (true) {
-      const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
-        limit: pageSize,
-        offset: page * pageSize,
-        where: [{ column: 'Publish Date', operator: 'eq', value: dateFilter }]
-      }, { headers: HEADERS })
+  
+     const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
+  limit: pageSize,
+  offset: page * pageSize,
+  where: {
+    column: 'Publish Date',
+    operator: 'eq',
+    value: dateFilter
+  }
+}, { headers: HEADERS })
+
 
       const rows = fetchResponse?.data?.rows || []
       if (rows.length === 0) break

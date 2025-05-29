@@ -21,7 +21,7 @@ async function callGPTWithRetry(rowId, requirements) {
         role: 'system',
         content: `You are a data extractor for job listings. Based on the input, extract the following:
 
-- City: Determine the city of the job location based on the text. If unsure, return "null".
+- City: Determine the city of the job location based on the text. Return the name in English only. If unsure, return "null".
 - Country: Determine the country of the job location using the city name if provided, or the full text if not. Answer only if you are confident, otherwise return "null".
 - Region: Determine the region/state/voivodeship/land/province the city belongs to, in English. If unsure, return "null".
 - Phone number: Extract the phone number from the text. Return only digits, no symbols or spaces. If missing, return "null".

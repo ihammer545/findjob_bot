@@ -46,7 +46,7 @@ Respond strictly in this JSON format:
     const timeout = setTimeout(() => controller.abort(), 15000)
 
     try {
-      console.log(`🤖 GPT запрос (попытка ${attempt}) для row ${rowId}`)
+   //   console.log(`🤖 GPT запрос (попытка ${attempt}) для row ${rowId}`)
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -71,7 +71,7 @@ Respond strictly in this JSON format:
   }
 }
 
-async function updateCountries(targetDate) {
+async function updateCountries(targetDate, alldates = false) {
   const API_URL = process.env.BOTPRESS_API_URL
   const BOT_ID = process.env.BOTPRESS_BOT_ID
   const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
@@ -95,6 +95,15 @@ async function updateCountries(targetDate) {
 
   const dateFilter = new Date(targetDate).toISOString().split('T')[0] // yyyy-mm-dd
 
+  const filterObject = alldates
+    ? {} // ❌ Без фильтра по дате
+    : {
+        'Publish Date': {
+          $gte: `${dateFilter}T00:00:00.000Z`,
+          $lte: `${dateFilter}T23:59:59.999Z`
+        }
+      };
+
   setInterval(() => {
     console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)
   }, 30000)
@@ -106,12 +115,7 @@ async function updateCountries(targetDate) {
     const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
   limit: pageSize,
   offset: page * pageSize,
-  filter: {
-    'Publish Date': {
-      $gte: `${dateFilter}T00:00:00.000Z`,
-      $lte: `${dateFilter}T23:59:59.999Z`
-    }
-  },
+  filter: filterObject,
   orderBy: 'id',              // ✅ Явно указываем сортировку по id
   orderDirection: 'asc'       // ✅ И направление сортировки
 }, { headers: HEADERS })
@@ -130,7 +134,7 @@ async function updateCountries(targetDate) {
         const cityField = row.City?.trim()
         const requirements = row.Requirements?.trim()
 
-        console.log(`➡️ Обработка строки ${processed} (ID: ${rowId})`)
+       // console.log(`➡️ Обработка строки ${processed} (ID: ${rowId})`)
 
         if (!cityField && !requirements) continue
 

@@ -106,15 +106,18 @@ async function updateCountries(targetDate) {
      const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
   limit: pageSize,
   offset: page * pageSize,
-  where: {
-    column: 'Publish Date',
-    operator: 'between',
-    value: [
-      `${dateFilter}T00:00:00.000Z`,
-      `${dateFilter}T23:59:59.999Z`
-    ]
-  }
+  where: [
+    {
+      column: 'Publish Date',
+      operator: 'between',
+      value: [
+    `${dateFilter}T00:00:00.000Z`,
+    `${dateFilter}T23:59:59.999Z`
+  ]
+    }
+  ]
 }, { headers: HEADERS })
+
 
 
       const rows = fetchResponse?.data?.rows || []

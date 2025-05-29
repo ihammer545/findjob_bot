@@ -111,7 +111,9 @@ async function updateCountries(targetDate) {
       $gte: `${dateFilter}T00:00:00.000Z`,
       $lte: `${dateFilter}T23:59:59.999Z`
     }
-  }
+  },
+  orderBy: 'id',              // ✅ Явно указываем сортировку по id
+  orderDirection: 'asc'       // ✅ И направление сортировки
 }, { headers: HEADERS })
 
 

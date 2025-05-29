@@ -14,16 +14,17 @@ app.get('/', (req, res) => {
 
 app.post('/country', async (req, res) => {
   const { date, alldates } = req.body;
+  const isAllDates = alldates === true || alldates === 'true';
 
-  if (!date && !alldates) {
+  if (!isAllDates && !date) {
     return res.status(400).send('❌ Не передана дата и не указан флаг alldates');
   }
 
-  console.log(`📅 Получен POST /country с датой: ${date} (alldates: ${alldates})`);
-  res.status(202).send(`🟢 Задача принята. Обработка вакансий: ${alldates ? 'все даты' : date}`);
+  console.log(`📅 Получен POST /country с датой: ${date} (alldates: ${isAllDates})`);
+  res.status(202).send(`🟢 Задача принята. Обработка: ${isAllDates ? 'все даты' : date}`);
 
   try {
-    await updateCountries(date, alldates);  // 👈 передаём оба параметра
+    await updateCountries(date, isAllDates);
   } catch (err) {
     console.error('❌ Ошибка в updateCountries:', err);
   }

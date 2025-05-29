@@ -12,15 +12,21 @@ app.get('/', (req, res) => {
   res.send('✅ OK');
 });
 
-app.get('/Country', async (req, res) => {
+app.post('/country', async (req, res) => {
+  const { date } = req.body;
+
+  if (!date) {
+    return res.status(400).send('⛔ Не указана дата');
+  }
+
   try {
-    console.log('🚀 Запуск обновления стран через /Country');
-    const log = await updateCountries();
+    console.log(`📅 Запуск updateCountries() для даты: ${date}`);
+    const log = await updateCountries(date);
     console.log('✅ Обработка завершена. Статус:\n' + log.join('\n'));
     res.send(`<pre>${log.join('\n')}</pre>`);
   } catch (err) {
-    console.error('❌ Ошибка в updateCountries:', err);
-    res.status(500).send('❌ Произошла ошибка при обновлении стран');
+    console.error('❌ Ошибка при обработке через POST /country:', err);
+    res.status(500).send('❌ Ошибка при обновлении');
   }
 });
 

@@ -72,6 +72,9 @@ Respond strictly in this JSON format:
 }
 
 async function updateCountries(targetDate, alldates = false) {
+  const isAllDates = alldates === true || alldates === 'true';
+ let filterObject = {};
+
   const API_URL = process.env.BOTPRESS_API_URL
   const BOT_ID = process.env.BOTPRESS_BOT_ID
   const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
@@ -93,16 +96,20 @@ async function updateCountries(targetDate, alldates = false) {
   let batchSinceFlush = 0
   const failedRows = []
 
-  const dateFilter = new Date(targetDate).toISOString().split('T')[0] // yyyy-mm-dd
+   if (!isAllDates) {
+    if (!targetDate) {
+      throw new Error('Date is required when alldates is false');
+    }
+    const dateFilter = new Date(targetDate).toISOString().split('T')[0];
+    filterObject = {
+      'Publish Date': {
+        $gte: `${dateFilter}T00:00:00.000Z`,
+        $lte: `${dateFilter}T23:59:59.999Z`
+      }
+    };
+  }
 
-  const filterObject = alldates
-    ? {} // ❌ Без фильтра по дате
-    : {
-        'Publish Date': {
-          $gte: `${dateFilter}T00:00:00.000Z`,
-          $lte: `${dateFilter}T23:59:59.999Z`
-        }
-      };
+ 
 
   setInterval(() => {
     console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)

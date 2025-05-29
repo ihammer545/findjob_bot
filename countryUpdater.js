@@ -1,9 +1,11 @@
+// Обновлённый updateCountries с фильтрацией по дате публикации
+
 import axios from 'axios'
 
 const MAX_RPM = 200
 const DELAY = Math.ceil(60000 / MAX_RPM)
 const BATCH_SIZE = 50
-const FORCE_FLUSH_INTERVAL = 300
+const FORCE_FLUSH_INTERVAL = 300 // строк без сброса батча
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -30,13 +32,6 @@ Respond strictly in this JSON format:
   "Country": "...",
   "Region": "...",
   "Phone number": "..."
-}
-Return only valid JSON starting with '{' and ending with '}', with no explanations, preambles, or comments. If unsure, return:
-{
-  "City": "null",
-  "Country": "null",
-  "Region": "null",
-  "Phone number": "null"
 }`
       },
       {
@@ -76,7 +71,7 @@ Return only valid JSON starting with '{' and ending with '}', with no explanatio
   }
 }
 
-async function updateCountries() {
+async function updateCountries(targetDate) {
   const API_URL = process.env.BOTPRESS_API_URL
   const BOT_ID = process.env.BOTPRESS_BOT_ID
   const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
@@ -97,15 +92,20 @@ async function updateCountries() {
   let lastRowId = null
   let batchSinceFlush = 0
   const failedRows = []
-  let cityOverwrittenCount = 0
-  let gptCalls = 0
+
+  const dateFilter = new Date(targetDate).toISOString().split('T')[0] // yyyy-mm-dd
+
+  setInterval(() => {
+    console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)
+  }, 30000)
 
   try {
     let page = 0
     while (true) {
       const fetchResponse = await axios.post(`${API_URL}/rows/find`, {
         limit: pageSize,
-        offset: page * pageSize
+        offset: page * pageSize,
+        where: [{ column: 'Publish Date', operator: 'eq', value: dateFilter }]
       }, { headers: HEADERS })
 
       const rows = fetchResponse?.data?.rows || []
@@ -129,33 +129,24 @@ async function updateCountries() {
         let gptData
         try {
           gptData = await callGPTWithRetry(rowId, requirements)
-          gptCalls++
         } catch (err) {
           console.error(`❌ GPT error for row ${rowId}: ${err.message}`)
           failedRows.push(rowId)
           continue
         }
 
-        let content = gptData.choices?.[0]?.message?.content?.trim()
-        if (!content) {
-          console.error(`❌ Пустой ответ от GPT в row ${rowId}`)
-          failedRows.push(rowId)
-          continue
-        }
-
-        content = content.replace(/^[^{]+/, '').trim()
-
-        if (!content.startsWith('{')) {
-          console.error(`❌ Invalid JSON from GPT in row ${rowId}:`, content)
-          failedRows.push(rowId)
-          continue
-        }
-
         let parsed
+        const content = gptData.choices?.[0]?.message?.content?.trim()
+        if (!content?.startsWith('{')) {
+          console.error(`❌ Invalid JSON from GPT in row ${rowId}`)
+          failedRows.push(rowId)
+          continue
+        }
+
         try {
           parsed = JSON.parse(content)
         } catch (e) {
-          console.error(`❌ JSON parse error for row ${rowId}:`, content)
+          console.error(`❌ JSON parse error for row ${rowId}`)
           failedRows.push(rowId)
           continue
         }
@@ -174,13 +165,9 @@ async function updateCountries() {
         if (isValidField(Region)) updatedRow.Region = Region
         if (isValidField(PhoneNumber)) updatedRow['Phone number'] = PhoneNumber
 
-        if (
-          isValidField(DetectedCity) &&
-          (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())
-        ) {
-          console.log(`🔄 Перезаписываем город для row ${rowId}: "${cityField}" → "${DetectedCity}"`)
+        if (isValidField(DetectedCity) &&
+          (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())) {
           updatedRow.City = DetectedCity
-          cityOverwrittenCount++
         }
 
         batchRows.push(updatedRow)
@@ -197,6 +184,7 @@ async function updateCountries() {
           batchSinceFlush = 0
         }
       }
+
       page++
     }
 
@@ -216,9 +204,6 @@ async function updateCountries() {
     }
 
     console.log(`🏁 Обработка завершена. Всего строк: ${processed}`)
-    console.log(`📤 Всего GPT-вызовов: ${gptCalls}`)
-    console.log(`🏙️ Город был перезаписан как некорректный в ${cityOverwrittenCount} случаях`)
-    return []
   } catch (err) {
     console.error('❌ Unexpected error in updateCountries:', err)
   }

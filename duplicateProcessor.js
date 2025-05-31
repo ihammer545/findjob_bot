@@ -133,6 +133,54 @@ console.log(`📈 Ожидается примерно ${totalComparisons.toLocal
       timestamp: new Date().toISOString()
     };
 
+    // 🔄 Дополнительная проверка дубликатов по номеру телефона
+console.log("📞 [4.2] Запускаем дополнительную проверку по номеру телефона...");
+
+// Группируем по категориям, подкатегориям и номеру телефона
+const phoneGroups = groupBy(tickets.filter(t => !!t["Phone number"]), t =>
+  `${t["Job categories"]}|||${t["Job sub categories"]}|||${t["Phone number"]}`
+);
+
+for (const [groupKey, phoneGroup] of Object.entries(phoneGroups)) {
+  if (phoneGroup.length < 2) continue;
+
+  console.log(`📲 Проверка группы по телефону: ${groupKey} (${phoneGroup.length} записей)`);
+
+  const seenPairs = new Set();
+
+  for (let i = 0; i < phoneGroup.length; i++) {
+    const t1 = phoneGroup[i];
+    for (let j = i + 1; j < phoneGroup.length; j++) {
+      const t2 = phoneGroup[j];
+
+      const key = [t1.id, t2.id].sort().join('-');
+      if (seenPairs.has(key) || toDelete.has(t1.id) || toDelete.has(t2.id)) continue;
+      seenPairs.add(key);
+
+      const text1 = (t1.Requirements || '').slice(0, 1000);
+      const text2 = (t2.Requirements || '').slice(0, 1000);
+
+      console.log(`🤖 [4.2.GPT] Проверка пары по телефону: ${t1.id} vs ${t2.id}`);
+      gptRequests++;
+      const isDuplicate = await isLikelyDuplicateGPT(text1, text2);
+
+      if (isDuplicate) {
+        let toRemove = t2;
+        if (t1.Username === 'Anonymous participant' && t2.Username !== 'Anonymous participant') {
+          toRemove = t1;
+        } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
+          toRemove = t2;
+        }
+
+        toDelete.add(toRemove.id);
+        console.log(`🗑️ [4.2] Телефон-группа: добавлено к удалению: ${toRemove.id}`);
+      } else {
+        console.log(`✅ [4.2] GPT: НЕ дубликат по телефону`);
+      }
+    }
+  }
+}
+
     console.log(`📤 [8] Отправка результата на вебхук: найдено дубликатов ${toDelete.size}`);
     const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',

@@ -226,8 +226,17 @@ for (const [groupKey, phoneGroup] of Object.entries(phoneGroups)) {
           toRemove = t2;
         }
 
-        toDelete.add(toRemove.id);
-        console.log(`🗑️ [4.2] Телефон-группа: добавлено к удалению: ${toRemove.id}`);
+       
+    if (!toDelete.has(toRemove.id)) {
+  toDelete.add(toRemove.id);
+  batchToDelete.push(toRemove.id);
+  console.log(`🗑️ [4.2] Телефон-группа: добавлено к удалению: ${toRemove.id}`);
+
+  if (batchToDelete.length >= BATCH_SIZE) {
+    await flushBatch();
+  }
+}
+        
       } else {
         console.log(`✅ [4.2] GPT: НЕ дубликат по телефону`);
       }

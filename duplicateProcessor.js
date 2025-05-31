@@ -137,7 +137,10 @@ console.log(`📈 Ожидается примерно ${totalComparisons.toLocal
 console.log("📞 [4.2] Запускаем дополнительную проверку по номеру телефона...");
 
 // Группируем по категориям, подкатегориям и номеру телефона
-const phoneGroups = groupBy(tickets.filter(t => !!t["Phone number"]), t =>
+const phoneGroups = groupBy(tickets.filter(t => {
+  const phone = (t["Phone number"] || "").trim();
+  return /^\+?\d{6,}$/.test(phone); // +420123456 или 380991234567 и т.д.
+}), t =>
   `${t["Job categories"]}|||${t["Job sub categories"]}|||${t["Phone number"]}`
 );
 

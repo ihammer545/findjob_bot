@@ -136,6 +136,23 @@ console.log(`📈 Ожидается примерно ${totalComparisons.toLocal
     // 🔄 Дополнительная проверка дубликатов по номеру телефона
 console.log("📞 [4.2] Запускаем дополнительную проверку по номеру телефона...");
 
+
+// Проверка на мусорные значения в номере телефона
+const badPhoneRecords = tickets.filter(t => {
+  const phone = (t["Phone number"] || "").trim();
+  return phone === "" || phone.toLowerCase() === "null" || phone === "—";
+});
+
+if (badPhoneRecords.length > 0) {
+  console.log(`⚠️ Найдено ${badPhoneRecords.length} записей с пустыми или некорректными номерами телефонов (не будут включены в группировку):`);
+  for (const bad of badPhoneRecords.slice(0, 10)) {
+    console.log(`  - ID: ${bad.id}, phone: "${bad["Phone number"]}"`);
+  }
+  if (badPhoneRecords.length > 10) {
+    console.log(`  ...и еще ${badPhoneRecords.length - 10} таких записей`);
+  }
+}
+
 // Группируем по категориям, подкатегориям и номеру телефона
 const phoneGroups = groupBy(tickets.filter(t => {
   const phone = (t["Phone number"] || "").trim();

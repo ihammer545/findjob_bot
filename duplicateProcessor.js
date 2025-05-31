@@ -63,7 +63,31 @@ export async function processDuplicatesAndSendWebhook(webhookUrl) {
     console.log('📚 [3] Группировка по категориям и подкатегориям...');
     const groups = groupBy(tickets, t => `${t["Job categories"]}|||${t["Job sub categories"]}|||${t["City"]}`);
     const toDelete = new Set();
+let batchToDelete = [];
+const BATCH_SIZE = 50;
 
+async function flushBatch() {
+  if (batchToDelete.length === 0) return;
+
+  const payload = {
+    duplicates: batchToDelete,
+    total: tickets.length,
+    found: toDelete.size,
+    timestamp: new Date().toISOString()
+  };
+
+  console.log(`📤 Отправка партии из ${batchToDelete.length} дубликатов на вебхук...`);
+
+  const webhookResponse = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  console.log(`📬 Вебхук ответил со статусом: ${webhookResponse.status}`);
+
+  batchToDelete = []; // Очистить партию
+}
 
 //подсчитываем количество сравнений
 let totalComparisons = 0;
@@ -116,7 +140,17 @@ console.log(`📈 Ожидается примерно ${totalComparisons.toLocal
               } else if (t2.Username === 'Anonymous participant' && t1.Username !== 'Anonymous participant') {
                 toRemove = t2;
               }
-              toDelete.add(toRemove.id);
+              if (!toDelete.has(toRemove.id)) {
+  toDelete.add(toRemove.id);
+  batchToDelete.push(toRemove.id);
+
+  if (batchToDelete.length >= BATCH_SIZE) {
+    await flushBatch();
+  }
+}
+
+
+              
               console.log(`🗑️ [7] Добавлено к удалению: ${toRemove.id}`);
             } else {
               console.log(`✅ [7] GPT: НЕ дубликат`);
@@ -201,14 +235,11 @@ for (const [groupKey, phoneGroup] of Object.entries(phoneGroups)) {
   }
 }
 
-    console.log(`📤 [8] Отправка результата на вебхук: найдено дубликатов ${toDelete.size}`);
-    const webhookResponse = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+// Финальная отправка, если что-то осталось
+await flushBatch();
 
-    console.log(`📬 [9] Вебхук ответил со статусом: ${webhookResponse.status}`);
+
+    
   } catch (err) {
     console.error('❌ Ошибка в основном процессе:', err);
   }

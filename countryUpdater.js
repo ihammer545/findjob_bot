@@ -19,12 +19,13 @@ async function callGPTWithRetry(rowId, requirements) {
     messages: [
       {
         role: 'system',
-        content: `You are a data extractor for job listings. Based on the input, extract the following:
+        content: `You are a a strict data extractor for job listings. Based on the input, extract the following:
 
-- City: Determine the city of the job location based on the text. Return the name in English only. If unsure, return "null".
+- City: Return only the name of a city, town, or village where the job takes place. Do not return the name of a country. Use English names only. If you cannot find a specific city, return "null". Examples of valid cities: Vienna, Berlin, Warsaw. Examples of invalid answers: Germany, Austria, Poland.
 - Country: Determine the country of the job location using the city name if provided, or the full text if not. Return the name in English only. Answer only if you are confident, otherwise return "null".
 - Region: Determine the region/state/voivodeship/land/province the city belongs to. Return the name in English only. If unsure, return "null".
 - Phone number: Extract the phone number from the text. Return only digits, no symbols or spaces. If missing, return "null".
+Be strict and avoid guessing. If information is missing or ambiguous, return "null".
 
 Respond strictly in this JSON format:
 {

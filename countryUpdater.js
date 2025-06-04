@@ -194,11 +194,20 @@ updatedRow.Region = isValidField(Region) ? Region : 'null'
 // 🟢 Всегда обновляем Phone number
 updatedRow['Phone number'] = isValidField(PhoneNumber) ? PhoneNumber : 'null'
 
-// 🟢 Всегда обновляем City, даже если GPT сказал "null"
+// 🟢 Всегда обновляем City, даже если GPT сказал "null" а если City=Country то запишем null
 if (!cityField || cityField.toLowerCase() !== DetectedCity?.toLowerCase()) {
-  updatedRow.City = isValidField(DetectedCity) ? DetectedCity : 'null'
-}
+  const cityClean = DetectedCity?.trim().toLowerCase()
+  const countryClean = Country?.trim().toLowerCase()
 
+  if (
+    isValidField(DetectedCity) &&
+    cityClean !== countryClean
+  ) {
+    updatedRow.City = DetectedCity
+  } else {
+    updatedRow.City = 'null'
+  }
+}
 
         batchRows.push(updatedRow)
 

@@ -183,14 +183,22 @@ async function updateCountries(targetDate, alldates = false) {
           continue
         }
 
-        const updatedRow = { id: rowId, Country }
-        if (isValidField(Region)) updatedRow.Region = Region
-        if (isValidField(PhoneNumber)) updatedRow['Phone number'] = PhoneNumber
+        const updatedRow = { id: rowId }
 
-        if (isValidField(DetectedCity) &&
-          (!cityField || cityField.toLowerCase() !== DetectedCity.toLowerCase())) {
-          updatedRow.City = DetectedCity
-        }
+// 🟢 Всегда обновляем Country, даже если "null"
+updatedRow.Country = isValidField(Country) ? Country : 'null'
+
+// 🟢 Всегда обновляем Region
+updatedRow.Region = isValidField(Region) ? Region : 'null'
+
+// 🟢 Всегда обновляем Phone number
+updatedRow['Phone number'] = isValidField(PhoneNumber) ? PhoneNumber : 'null'
+
+// 🟢 Всегда обновляем City, даже если GPT сказал "null"
+if (!cityField || cityField.toLowerCase() !== DetectedCity?.toLowerCase()) {
+  updatedRow.City = isValidField(DetectedCity) ? DetectedCity : 'null'
+}
+
 
         batchRows.push(updatedRow)
 

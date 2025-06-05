@@ -97,33 +97,24 @@ async function updateCountries(targetDate, alldates = false, singleId = null) {
   let batchSinceFlush = 0
   const failedRows = []
 
-   if (!isAllDates) {
-    if (!targetDate) {
-      throw new Error('Date is required when alldates is false');
-    }
-    const dateFilter = new Date(targetDate).toISOString().split('T')[0];
-    filterObject = {
-      'Publish Date': {
-        $gte: `${dateFilter}T00:00:00.000Z`,
-        $lte: `${dateFilter}T23:59:59.999Z`
-      }
-    };
-  }
+  
 
  if (singleId) {
-    filterObject = { id: singleId };
-  } else if (!isAllDates) {
-    if (!targetDate) {
-      throw new Error('Date is required when alldates is false');
-    }
-    const dateFilter = new Date(targetDate).toISOString().split('T')[0];
-    filterObject = {
-      'Publish Date': {
-        $gte: `${dateFilter}T00:00:00.000Z`,
-        $lte: `${dateFilter}T23:59:59.999Z`
-      }
-    };
+  filterObject = { id: singleId };
+} else if (isAllDates) {
+  filterObject = {}; // все строки
+} else {
+  if (!targetDate) {
+    throw new Error('Date is required when alldates is false');
   }
+  const dateFilter = new Date(targetDate).toISOString().split('T')[0];
+  filterObject = {
+    'Publish Date': {
+      $gte: `${dateFilter}T00:00:00.000Z`,
+      $lte: `${dateFilter}T23:59:59.999Z`
+    }
+  };
+}
 
   setInterval(() => {
     console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)
@@ -182,14 +173,7 @@ async function updateCountries(targetDate, alldates = false, singleId = null) {
         }
 
         let parsed
-        const content = gptData.choices?.[0]?.message?.content?.trim()
-        if (!content?.startsWith('{')) {
-          console.error(`❌ Invalid JSON from GPT in row ${rowId}`)
-          failedRows.push(rowId)
-          continue
-        }
-
-        try {
+         try {
           parsed = JSON.parse(content)
         } catch (e) {
           console.error(`❌ JSON parse error for row ${rowId}`)

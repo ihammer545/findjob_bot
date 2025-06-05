@@ -72,9 +72,9 @@ Respond strictly in this JSON format:
   }
 }
 
-async function updateCountries(targetDate, alldates = false) {
+async function updateCountries(targetDate, alldates = false, singleId = null) {
   const isAllDates = alldates === true || alldates === 'true';
- let filterObject = {};
+  let filterObject = {};
 
   const API_URL = process.env.BOTPRESS_API_URL
   const BOT_ID = process.env.BOTPRESS_BOT_ID
@@ -110,7 +110,20 @@ async function updateCountries(targetDate, alldates = false) {
     };
   }
 
- 
+ if (singleId) {
+    filterObject = { id: singleId };
+  } else if (!isAllDates) {
+    if (!targetDate) {
+      throw new Error('Date is required when alldates is false');
+    }
+    const dateFilter = new Date(targetDate).toISOString().split('T')[0];
+    filterObject = {
+      'Publish Date': {
+        $gte: `${dateFilter}T00:00:00.000Z`,
+        $lte: `${dateFilter}T23:59:59.999Z`
+      }
+    };
+  }
 
   setInterval(() => {
     console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`)
@@ -153,6 +166,17 @@ async function updateCountries(targetDate, alldates = false) {
           gptData = await callGPTWithRetry(rowId, requirements)
         } catch (err) {
           console.error(`❌ GPT error for row ${rowId}: ${err.message}`)
+          failedRows.push(rowId)
+          continue
+        }
+
+        console.log(`📄 Обработка строки ID: ${rowId}`)
+
+        const content = gptData.choices?.[0]?.message?.content?.trim()
+        console.log(`🤖 GPT ответ для ID ${rowId}: ${content}`)
+      
+        if (!content?.startsWith('{')) {
+          console.error(`❌ Invalid JSON from GPT in row ${rowId}`)
           failedRows.push(rowId)
           continue
         }
@@ -208,6 +232,8 @@ if (!cityField || cityField.toLowerCase() !== DetectedCity?.toLowerCase()) {
     updatedRow.City = 'null'
   }
 }
+
+  console.log(`📤 Обновляем в Botpress:`, updatedRow)
 
         batchRows.push(updatedRow)
 

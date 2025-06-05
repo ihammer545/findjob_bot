@@ -123,11 +123,13 @@ async function updateCountries(targetDate, alldates = false, singleId = null) {
     };
   }
 
+  let intervalId = null;
+
   if (!isDebugMode) {
-    setInterval(() => {
-      console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`);
-    }, 30000);
-  }
+  intervalId = setInterval(() => {
+    console.log(`🧭 Watchdog: Обработано ${processed} строк, Последняя rowId: ${lastRowId}`);
+  }, 30000);
+}
 
   try {
     let page = 0;
@@ -248,6 +250,11 @@ async function updateCountries(targetDate, alldates = false, singleId = null) {
     }
 
     console.log(`🏁 Обработка завершена. Всего строк: ${processed}`);
+  if (intervalId) {
+    clearInterval(intervalId);
+  }
+
+
   } catch (err) {
     console.error('❌ Unexpected error in updateCountries:', err);
   }

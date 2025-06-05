@@ -249,10 +249,9 @@ async function updateCountries(targetDate, alldates = false, singleId = null) {
       console.warn(failedRows);
     }
 
-    console.log(`🏁 Обработка завершена. Всего строк: ${processed}`);
-  if (intervalId) {
-    clearInterval(intervalId);
-  }
+    if (intervalId) clearInterval(intervalId);
+console.log(`🏁 Обработка завершена. Всего строк: ${processed}`);
+
 
 
   } catch (err) {

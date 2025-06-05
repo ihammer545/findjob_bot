@@ -187,10 +187,7 @@ console.log('🔍 Фильтр по ID:', filterObject)
         const Region = parsed?.Region?.trim()
         const PhoneNumber = parsed?.['Phone number']?.trim()
 
-        if (!isValidField(Country)) {
-          failedRows.push(rowId)
-          continue
-        }
+       
 
         const updatedRow = { id: rowId }
 

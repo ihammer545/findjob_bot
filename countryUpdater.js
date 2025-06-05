@@ -191,16 +191,20 @@ console.log('🔍 Фильтр по ID:', filterObject)
 
         const updatedRow = { id: rowId }
 
-// 🟢 Всегда обновляем Country, даже если "null"
-updatedRow.Country = isValidField(Country) ? Country : 'null'
+// ✅ Обновляем страну только если GPT вернул валидное значение
+if (isValidField(Country)) {
+  updatedRow.Country = Country
+} else {
+  console.log(`⏭️ Страна не обновляется (GPT вернул null) для ID ${rowId}`)
+}
 
-// 🟢 Всегда обновляем Region
+// ✅ Обновляем регион и номер телефона всегда
 updatedRow.Region = isValidField(Region) ? Region : 'null'
 
 // 🟢 Всегда обновляем Phone number
 updatedRow['Phone number'] = isValidField(PhoneNumber) ? PhoneNumber : 'null'
 
-// 🟢 Всегда обновляем City, даже если GPT сказал "null" а если City=Country то запишем null
+// ✅ Город: обновляем, если он отличается от текущего
 if (!cityField || cityField.toLowerCase() !== DetectedCity?.toLowerCase()) {
   const cityClean = DetectedCity?.trim().toLowerCase()
   const countryClean = Country?.trim().toLowerCase()

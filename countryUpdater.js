@@ -100,7 +100,7 @@ async function updateCountries(targetDate, alldates = false, singleId = null) {
   
 
  if (singleId) {
-  filterObject = { id: singleId };
+  filterObject = { id: String(singleId) };
 } else if (isAllDates) {
   filterObject = {}; // все строки
 } else {

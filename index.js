@@ -12,8 +12,22 @@ app.get('/', (req, res) => {
   res.send('✅ OK');
 });
 
+
+
 app.post('/country', async (req, res) => {
-  const { date, alldates } = req.body;
+  const { date, alldates, id } = req.body;
+
+  if (id) {
+    console.log(`📌 Обработка по ID: ${id}`);
+    res.status(202).send(`🟢 Задача принята. Обработка строки с ID: ${id}`);
+    try {
+      await updateCountries(null, false, id);
+    } catch (err) {
+      console.error('❌ Ошибка в updateCountries:', err);
+    }
+    return;
+  }
+
   const isAllDates = alldates === true || alldates === 'true';
 
   if (!isAllDates && !date) {
@@ -29,6 +43,7 @@ app.post('/country', async (req, res) => {
     console.error('❌ Ошибка в updateCountries:', err);
   }
 });
+
 
 
 app.post('/check', async (req, res) => {

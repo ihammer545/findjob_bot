@@ -1,22 +1,13 @@
 // masschange.js
-// Массовая замена значения в конкретном поле Botpress по равенству
-
-import express from 'express'
+import { Router } from 'express'
 import axios from 'axios'
 
-const app = express()
-app.use(express.json())
+const router = Router()
 
-// --- Конфиг из env ---
-const API_URL = process.env.BOTPRESS_API_URL         // например: https://api.botpress.cloud/v1
+const API_URL = process.env.BOTPRESS_API_URL
 const BOT_ID = process.env.BOTPRESS_BOT_ID
 const WORKSPACE_ID = process.env.BOTPRESS_WORKSPACE_ID
 const BP_TOKEN = process.env.BOTPRESS_API_TOKEN
-
-if (!API_URL || !BOT_ID || !WORKSPACE_ID || !BP_TOKEN) {
-  console.error('❌ Missing Botpress env vars: BOTPRESS_API_URL, BOTPRESS_BOT_ID, BOTPRESS_WORKSPACE_ID, BOTPRESS_API_TOKEN')
-  process.exit(1)
-}
 
 const HEADERS = {
   Authorization: `Bearer ${BP_TOKEN}`,
@@ -25,159 +16,63 @@ const HEADERS = {
   'Content-Type': 'application/json'
 }
 
-const PAGE_SIZE = 100        // постраничная выборка
-const BATCH_SIZE = 100       // размер батча на обновление
+const PAGE_SIZE = 100
+const BATCH_SIZE = 100
 
-// Утилита безопасного чтения значения поля
-const getFieldValue = (row, field) => {
-  // поддержим точки в имени поля вроде "Phone number"
-  return row?.[field]
-}
-
-// --- основной эндпоинт ---
-// можно вызывать как:
-// GET  /masschange?field=Region&from=null&to=Lower Austria
-// POST /masschange  { "field":"Region", "from":"null", "to":"Lower Austria" }
-app.all('/masschange', async (req, res) => {
+// эндпоинт массовой замены
+router.all('/masschange', async (req, res) => {
   try {
-    // читаем параметры из query или body (body имеет приоритет)
     const field = (req.body.field ?? req.query.field ?? '').trim()
-    const from = (req.body.from ?? req.query.from ?? '')
-    const to = (req.body.to ?? req.query.to ?? '')
+    const from = req.body.from ?? req.query.from
+    const to = req.body.to ?? req.query.to
 
-    // опциональные флаги:
-    const caseInsensitive = (req.body.caseInsensitive ?? req.query.caseInsensitive ?? 'false') === 'true'
-    const dryRun = (req.body.dryRun ?? req.query.dryRun ?? 'false') === 'true'
-
-    if (!field) {
-      return res.status(400).json({ error: 'Missing "field" parameter' })
-    }
-    if (from === '') {
-      return res.status(400).json({ error: 'Missing "from" parameter' })
-    }
-    if (to === '') {
-      return res.status(400).json({ error: 'Missing "to" parameter' })
+    if (!field || from === undefined || to === undefined) {
+      return res.status(400).json({ error: 'Missing parameters: field, from, to' })
     }
 
-    console.log(`🚀 MASSCHANGE start | field="${field}" | from="${from}" | to="${to}" | caseInsensitive=${caseInsensitive} | dryRun=${dryRun}`)
+    console.log(`🚀 MASSCHANGE start | field="${field}" | from="${from}" | to="${to}"`)
 
     let page = 0
-    let totalScanned = 0
-    let totalMatched = 0
-    let totalUpdated = 0
-    let lastRowId = null
-
+    let updated = 0
+    let matched = 0
     const batch = []
 
-    // Внутренняя функция отправки накопленного батча
-    async function flushBatch() {
-      if (batch.length === 0) return
-      if (dryRun) {
-        console.log(`🧪 DRY-RUN: пропускаем PUT (батч ${batch.length})`)
-        batch.length = 0
-        return
-      }
-      console.log(`⬆️ PUT /rows — отправка батча (${batch.length})...`)
-      try {
+    async function flush() {
+      if (batch.length > 0) {
         await axios.put(`${API_URL}/rows`, { rows: batch }, { headers: HEADERS })
-        totalUpdated += batch.length
-        console.log(`✅ Обновлено строк: +${batch.length} (итого ${totalUpdated})`)
-      } catch (err) {
-        console.error('❌ Ошибка при обновлении батча:', err.response?.data || err.message)
-      } finally {
+        console.log(`✅ Updated batch of ${batch.length}`)
+        updated += batch.length
         batch.length = 0
       }
     }
 
-    // Подготовим фильтр. Большинство установок Botpress позволяют равенство простым значением.
-    // Если сервер не поддерживает сложные операторы OR, мы делаем постфильтрацию на клиенте (см. ниже).
-    const baseFilter = { [field]: from }
-
     while (true) {
-      const payload = {
+      const resp = await axios.post(`${API_URL}/rows/find`, {
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
-        filter: baseFilter,
+        filter: { [field]: from },
         orderBy: 'id',
         orderDirection: 'asc'
-      }
+      }, { headers: HEADERS })
 
-      let rows = []
-      try {
-        const resp = await axios.post(`${API_URL}/rows/find`, payload, { headers: HEADERS })
-        rows = resp?.data?.rows ?? []
-      } catch (err) {
-        console.error('❌ Ошибка запроса /rows/find:', err.response?.data || err.message)
-        break
-      }
-
+      const rows = resp.data.rows || []
       if (rows.length === 0) break
 
       for (const row of rows) {
-        totalScanned++
-        lastRowId = row.id
-
-        const currentVal = getFieldValue(row, field)
-        let isMatch
-
-        if (caseInsensitive && typeof currentVal === 'string' && typeof from === 'string') {
-          isMatch = currentVal.toLowerCase() === from.toLowerCase()
-        } else {
-          isMatch = currentVal === from
-        }
-
-        // На случай если серверная фильтрация не идеальна — дублируем проверку
-        if (!isMatch) {
-          continue
-        }
-
-        totalMatched++
-
-        // Пропускаем, если уже равно целевому значению
-        if (currentVal === to || (caseInsensitive && typeof currentVal === 'string' && currentVal.toLowerCase() === String(to).toLowerCase())) {
-          continue
-        }
-
-        const updatedRow = { id: row.id, [field]: to }
-        batch.push(updatedRow)
-
-        if (batch.length >= BATCH_SIZE) {
-          await flushBatch()
-        }
+        matched++
+        batch.push({ id: row.id, [field]: to })
+        if (batch.length >= BATCH_SIZE) await flush()
       }
-
       page++
-      console.log(`📄 Page ${page} processed | scanned: ${totalScanned} | matched: ${totalMatched} | lastRowId: ${lastRowId}`)
     }
 
-    // финальный батч
-    await flushBatch()
+    await flush()
 
-    const summary = {
-      field,
-      from,
-      to,
-      dryRun,
-      caseInsensitive,
-      scanned: totalScanned,
-      matched: totalMatched,
-      updated: totalUpdated
-    }
-
-    console.log('🏁 MASSCHANGE done:', summary)
-    return res.json(summary)
+    return res.json({ matched, updated })
   } catch (e) {
-    console.error('❌ MASSCHANGE unexpected error:', e)
-    return res.status(500).json({ error: e.message || 'Unexpected error' })
+    console.error('❌ MASSCHANGE error:', e)
+    return res.status(500).json({ error: e.message })
   }
 })
 
-// Запуск сервера, если файл исполняется напрямую
-if (process.argv[1] === new URL(import.meta.url).pathname) {
-  const PORT = process.env.PORT || 3000
-  app.listen(PORT, () => {
-    console.log(`✅ Masschange server listening on http://localhost:${PORT}`)
-  })
-}
-
-export default app
+export default router

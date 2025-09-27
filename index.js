@@ -1,67 +1,59 @@
 // index.js
-import express from 'express';
-import updateCountries from './countryUpdater.js';
-import processDuplicatesAndSendWebhook from './duplicateProcessor.js';
+import express from 'express'
+import updateCountries from './countryUpdater.js'
+import processDuplicatesAndSendWebhook from './duplicateProcessor.js'
+import masschangeRouter from './masschange.js' // файл лежит рядом с index.js
 
-// ⬇️ ДОБАВИТЬ: импорт приложения/роутера masschange
-// ВАРИАНТ A: если в masschange.js экспортируется `export default app`
-import masschangeRouter from './masschange.js'
+const app = express()
+const port = process.env.PORT || 10000
+
+app.use(express.json())
+
+// подключаем роутер массовой замены
 app.use(masschangeRouter)
-// ВАРИАНТ B: если в masschange.js экспортируется хендлер `export const massChangeHandler = ...`
-// import { massChangeHandler } from './masschange.js';
-
-const app = express();
-const port = process.env.PORT || 10000;
-
-app.use(express.json());
-
-
-
-
 
 app.get('/', (req, res) => {
-  res.send('✅ OK');
-});
+  res.send('✅ OK')
+})
 
 app.post('/country', async (req, res) => {
-  const { date, alldates, id } = req.body;
+  const { date, alldates, id } = req.body
 
   if (id) {
-    console.log(`📌 Обработка по ID: ${id}`);
-    res.status(202).send(`🟢 Задача принята. Обработка строки с ID: ${id}`);
+    console.log(`📌 Обработка по ID: ${id}`)
+    res.status(202).send(`🟢 Задача принята. Обработка строки с ID: ${id}`)
     try {
-      await updateCountries(null, false, id);
+      await updateCountries(null, false, id)
     } catch (err) {
-      console.error('❌ Ошибка в updateCountries:', err);
+      console.error('❌ Ошибка в updateCountries:', err)
     }
-    return;
+    return
   }
 
-  const isAllDates = alldates === true || alldates === 'true';
-
+  const isAllDates = alldates === true || alldates === 'true'
   if (!isAllDates && !date) {
-    return res.status(400).send('❌ Не передана дата и не указан флаг alldates');
+    return res.status(400).send('❌ Не передана дата и не указан флаг alldates')
   }
 
-  console.log(`📅 Получен POST /country с датой: ${date} (alldates: ${isAllDates})`);
-  res.status(202).send(`🟢 Задача принята. Обработка: ${isAllDates ? 'все даты' : date}`);
+  console.log(`📅 Получен POST /country с датой: ${date} (alldates: ${isAllDates})`)
+  res.status(202).send(`🟢 Задача принята. Обработка: ${isAllDates ? 'все даты' : date}`)
 
   try {
-    await updateCountries(date, isAllDates);
+    await updateCountries(date, isAllDates)
   } catch (err) {
-    console.error('❌ Ошибка в updateCountries:', err);
+    console.error('❌ Ошибка в updateCountries:', err)
   }
-});
+})
 
 app.post('/check', async (req, res) => {
-  const webhookUrl = 'https://hook.eu2.make.com/g8kdpfddlaq70l31olejqx8ibtcpba9a';
-  console.log('✅ Получен запрос на проверку дублей');
-  res.send('🟢 Задача принята в обработку');
+  const webhookUrl = 'https://hook.eu2.make.com/g8kdpfddlaq70l31olejqx8ibtcpba9a'
+  console.log('✅ Получен запрос на проверку дублей')
+  res.send('🟢 Задача принята в обработку')
 
   processDuplicatesAndSendWebhook(webhookUrl)
-    .catch(err => console.error('❌ Ошибка фоновой задачи:', err));
-});
+    .catch(err => console.error('❌ Ошибка фоновой задачи:', err))
+})
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`✅ Server is running on http://0.0.0.0:${port}`);
-});
+  console.log(`✅ Server is running on http://0.0.0.0:${port}`)
+})

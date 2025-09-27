@@ -5,8 +5,8 @@ import processDuplicatesAndSendWebhook from './duplicateProcessor.js';
 
 // ⬇️ ДОБАВИТЬ: импорт приложения/роутера masschange
 // ВАРИАНТ A: если в masschange.js экспортируется `export default app`
-import masschangeApp from './masschange.js';
-
+import masschangeRouter from './masschange.js'
+app.use(masschangeRouter)
 // ВАРИАНТ B: если в masschange.js экспортируется хендлер `export const massChangeHandler = ...`
 // import { massChangeHandler } from './masschange.js';
 
@@ -15,12 +15,9 @@ const port = process.env.PORT || 10000;
 
 app.use(express.json());
 
-// ⬇️ ДОБАВИТЬ: монтируем маршруты masschange
-// ВАРИАНТ A (default app):
-app.use(masschangeApp);
 
-// ВАРИАНТ B (handler):
-// app.all('/masschange', massChangeHandler);
+
+
 
 app.get('/', (req, res) => {
   res.send('✅ OK');

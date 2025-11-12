@@ -308,7 +308,7 @@ async function isLikelyDuplicateGPT(textA, textB) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
         temperature: 0,
         max_tokens: 3,
         messages: [

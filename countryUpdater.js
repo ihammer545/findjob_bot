@@ -13,7 +13,7 @@ function sleep(ms) {
 
 async function callGPTWithRetry(rowId, requirements) {
   const payload = {
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
     temperature: 0,
     max_tokens: 150,
     messages: [
